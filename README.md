@@ -9,3 +9,6 @@ Sound playback is currently only available on Windows. I'll figure it out for Li
 # Encoding compatible webms
 Peferably you want to be using VP9 and opus for the best results. Also ensure the pixel format is YUV420.
 The easiest way to encode a compatiable webm is probably to use [WebmConverter](https://argorar.github.io/WebMConverter/). If you're using ffmpeg make sure you include `-pix_fmt yuv420p` if you're not sure the source video is in the correct format.
+
+# Building
+***TODO***
