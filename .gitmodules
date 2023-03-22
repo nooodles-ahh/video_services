@@ -1,0 +1,15 @@
+[submodule "thirdparty/opus"]
+	path = thirdparty/opus
+	url = https://github.com/xiph/opus.git
+[submodule "thirdparty/libvpx"]
+	path = thirdparty/libvpx
+	url = https://github.com/ShiftMediaProject/libvpx.git
+[submodule "thirdparty/libvorbis"]
+	path = thirdparty/libvorbis
+	url = https://github.com/xiph/vorbis.git
+[submodule "thirdparty/libogg"]
+	path = thirdparty/libogg
+	url = https://github.com/xiph/ogg.git
+[submodule "thirdparty/libwebm"]
+	path = thirdparty/libwebm
+	url = https://github.com/webmproject/libwebm.git

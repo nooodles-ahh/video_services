@@ -1,0 +1,68 @@
+//-----------------------------------------------------------------------------
+//	VIDEO_SERVICES.VPC
+//
+//	Project Script
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro OUTBINDIR	"$SRCDIR\..\game\bin"
+
+$Macro LIBVIDEO	"..\lib$PLATSUBDIR"
+
+$Include "$SRCDIR\vpc_scripts\source_dll_base.vpc"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories		"$BASE;$SRCDIR\video_services\includes\;$SRCDIR\video_services\includes\libwebm;$SRCDIR\video_services\includes\dx9sdk\"
+		$PreprocessorDefinitions			"$BASE;MPI;PROTECTED_THINGS_DISABLE"
+		$TreatWarningsAsErrors				"No (/WX-)"
+	}
+
+	$Linker
+	{
+		$AdditionalLibraryDirectories		"$BASE;$LIBVIDEO"
+	}
+}
+
+$Project "Video Services"
+{
+	$Folder	"Source Files"
+	{
+		-$File	"$SRCDIR\public\tier0\memoverride.cpp"
+		$File	"video_services.cpp"
+		$File	"video_material.cpp"
+		$File	"OpusVorbisDecoder.cpp"
+		$File	"VPXDecoder.cpp"
+		$File	"WebMDemuxer.cpp"
+	}
+	
+	$Folder	"Header Files"
+	{
+		$File	"$SRCDIR\public\video\ivideoservices.h"
+		$File	"video_services.h"
+		$File	"video_material.h"
+		$File	"OpusVorbisDecoder.hpp"
+		$File	"VPXDecoder.hpp"
+		$File	"WebMDemuxer.hpp"
+	}
+	
+	$Folder	"Link Libraries"
+	{
+		$Lib tier2
+		$Lib tier3
+		$Lib $LIBVIDEO\libwebm
+		$ImpLib $LIBVIDEO\vpx
+		
+		$Lib $LIBVIDEO\vorbis [$WIN32]
+		$Lib $LIBVIDEO\opus [$WIN32]
+		$Lib $LIBVIDEO\ogg [$WIN32]
+		$Lib $LIBVIDEO\dsound [$WIN32]
+		$Lib $LIBVIDEO\dxguid [$WIN32]
+		
+		$Lib $LIBVIDEO\libvorbis [$LINUX]
+		$Lib $LIBVIDEO\libopus [$LINUX]
+		$Lib $LIBVIDEO\libogg [$LINUX]
+	}
+}
