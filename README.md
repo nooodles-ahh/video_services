@@ -16,3 +16,8 @@ The easiest way to encode a compatiable webm is probably to use [WebmConverter](
 - Include `video_services` in your project group
 - Regenerate and build
 - Copy vpx.dll and the resulting video_services.dll into your root bin folder. i.e. `Half-Life 2\bin` **not** `Half-life 2\hl2\bin`
+
+# Problems
+- Feature parity isn't 1:1
+- The sound system is shutdown before video services is, so you might get a crash on shutdown depending how you're using it
+- I don't know how to write thread safe code
