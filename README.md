@@ -6,7 +6,7 @@ This is intended for standalone Source engine mods released on Steam but can be 
 
 Sound playback is currently only available on Windows. I'll figure it out for Linux when I feel like it.
 
-# Rational
+# Rationale
 The version of Source provided to modders only has support for Bink which isn't well suited for HD video, and Quicktime video if you're using Windows and install the long since abandoned Quicktime player. 
 
 At the time of writting I'm a developer attempting to improve the infamous mod Hunt Down the Freeman. The mod makes heavy use of cutscenes and as Bink is the only real option, that's what was used. This resulted in about 6.6GB of cutscenes of acceptable quality. The same videos encoded using VP9 and Opus only take up a little over 900MB. So about 13%-16% of the original size for equal or, in most cases, better quality. 
