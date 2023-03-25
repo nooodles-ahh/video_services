@@ -698,7 +698,7 @@ bool CVideoMaterial::Update()
 				numBytesRead += numOutSamples;
 
 				// Noodles; why is this a functional solution?
-				if ( m_videoTime > m_audioFrame->time )
+				if ( m_curTime > m_audioFrame->time )
 				{
 					m_curTime = m_videoTime;
 				}
