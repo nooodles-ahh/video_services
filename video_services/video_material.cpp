@@ -20,11 +20,17 @@
 #define BUFFER_SIZE 15360
 #define BUFFER_HALF_SIZE BUFFER_SIZE * 0.5
 
+//=============================================================================
+// 
+// Video texture regenerator
+// 
+//=============================================================================
 void CYUVTextureRegenerator::RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTFTexture, Rect_t *pSubRect )
 {
 	unsigned char *imageData = pVTFTexture->ImageData();
 	int rowSize = pVTFTexture->RowSizeInBytes( 0 );
-	// IBik shader only supports YUV420
+	// Bik shader only supports YUV420
+	// TODO - support more video colour formats
 	if ( m_decodedImage && m_decodedImage->chromaShiftW == 1 && m_decodedImage->chromaShiftH == 1 )
 	{
 		unsigned char *pixels = m_decodedImage->planes[m_channel];
@@ -40,9 +46,17 @@ void CYUVTextureRegenerator::RegenerateTextureBits( ITexture *pTexture, IVTFText
 
 void CYUVTextureRegenerator::Release()
 {
-	// do fuck all
 }
 
+//=============================================================================
+// 
+// Video material
+// 
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+// Purpose: a paranoid amount of initialisation
+//-----------------------------------------------------------------------------
 CVideoMaterial::CVideoMaterial()
 {
 	m_mkvReader = nullptr;
@@ -105,13 +119,8 @@ CVideoMaterial::~CVideoMaterial()
 
 	DestroySoundBuffer();
 
-	IMaterial *material = m_videoMaterial;
-	m_videoMaterial.Shutdown();
-	// Cause the render target to go away
-	materials->UncacheUnusedMaterials();
-
-	if ( material )
-		material->DeleteIfUnreferenced();
+	// Nooodles; often the same video material is used over and over, so unless you completely rid of it
+	// issues arise. I don't know how much of this is necessary anymore now that it actually dies, but better safe than sorry
 
 	if ( m_crTexture.IsValid() )
 	{
@@ -132,6 +141,15 @@ CVideoMaterial::~CVideoMaterial()
 	delete m_yTextureRegen;
 	delete m_crTextureRegen;
 	delete m_cbTextureRegen;
+
+	IMaterial *material = m_videoMaterial;
+	m_videoMaterial.Shutdown();
+	// Cause the render target to go away
+	materials->UncacheUnusedMaterials();
+
+	// kill it if it remains
+	if ( material )
+		material->DeleteIfUnreferenced();
 
 #ifdef _WIN32
 	if ( m_beginningEventHandle )
@@ -177,7 +195,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_pcm = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
 	m_videoWidth = m_demuxer->getWidth();
 	m_videoHeight = m_demuxer->getHeight();
-	m_frameRate.SetFPS( m_demuxer->getFrameRate() );
+	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); // This is a guessed framerate from the first 50 frames
 
 	if ( pSoundDevice )
 	{
@@ -203,7 +221,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_textureHeight = SmallestPowerOfTwoGreaterOrEqual( m_videoHeight );
 
 	m_yTexture.InitProceduralTexture( ytexture, "VideoCacheTextures", m_textureWidth, m_textureHeight, IMAGE_FORMAT_I8, tex_flags );
-	// U and V are half the size
+	// CB and CR are half the size of the Y (the brightness)
 	m_cbTexture.InitProceduralTexture( cbtexture, "VideoCacheTextures", m_textureWidth >> 1, m_textureHeight >> 1, IMAGE_FORMAT_I8, tex_flags );
 	m_crTexture.InitProceduralTexture( crtexture, "VideoCacheTextures", m_textureWidth >> 1, m_textureHeight >> 1, IMAGE_FORMAT_I8, tex_flags );
 
@@ -282,7 +300,7 @@ const char *CVideoMaterial::GetVideoFileName()
 
 VideoResult_t CVideoMaterial::GetLastResult()
 {
-	return VideoResult::EVideoResult_t::SYSTEM_NOT_AVAILABLE;
+	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
 }
 
 VideoFrameRate_t &CVideoMaterial::GetVideoFrameRate()
@@ -312,6 +330,10 @@ bool CVideoMaterial::IsFinishedPlaying()
 }
 
 #ifdef _WIN32
+//-----------------------------------------------------------------------------
+// Purpose: Thread function that deals with pausing the sound buffer if
+//	the other half of the sound buffer hasn't recently been filled
+//-----------------------------------------------------------------------------
 unsigned CVideoMaterial::_HandleBufferEvents( void *params )
 {
 	CVideoMaterial *m = (CVideoMaterial *)params;
@@ -654,7 +676,7 @@ bool CVideoMaterial::Update()
 	while ( ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE ) || ( !bHasAudio && NeedNewFrame( m_curTime ) ) )
 	{
 #ifdef _WIN32
-		// UPDATE BUFFER YES?
+		// SHOULD THE BUFFER BE UPDATED?
 		if ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE )
 		{
 			// which half of the buffer are we updating
@@ -673,13 +695,13 @@ bool CVideoMaterial::Update()
 				char *pcm = nullptr;
 				if ( !m_pcmOverflow )
 				{
-					// new frame get PCM data as normal
+					// new frame get more PCM data as normal
 					m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
 					pcm = (char *)m_pcm;
 				}
 				else
 				{
-					// we have overflow from the previous frame so we'll need to put it in the current half of the buffer
+					// we have overflow from the previous frame so put it in the current half of the buffer
 					pcm = (char *)(m_pcm)+( m_pcmOffset * m_waveFormat.nBlockAlign );
 					numOutSamples = m_pcmOverflow;
 					m_pcmOverflow = 0;
@@ -700,7 +722,7 @@ bool CVideoMaterial::Update()
 
 				numBytesRead += numOutSamples;
 
-				// Noodles; why is this a functional solution?
+				// if our timer is waaaaayyy ahead of the audio time set it back
 				if ( m_curTime > m_audioFrame->time )
 				{
 					m_curTime = m_videoTime;
@@ -712,7 +734,7 @@ bool CVideoMaterial::Update()
 		}
 #endif
 
-		// if we need to copy audio on the other half don't read a new frame
+		// if we don't need to copy audio on the other half read a new frame
 		if ( m_pcmOverflow == 0 )
 		{
 			WebMFrame *video_frame = new WebMFrame();
@@ -731,11 +753,11 @@ bool CVideoMaterial::Update()
 		}
 	}
 
-	// roll back for audioless vids
+	// roll back for videos with no audio
 	if ( !m_demuxer->isEOS() && !m_audioDecoder->isOpen() )
 	{
 		// if our current time is out, roll it back
-		// Noodles; I feel this will cause issues, but it seems mostly fine right now
+		// Noodles; I feel this will cause issues, but it seems fine right now
 		double frameDur = 1.0 / m_frameRate.GetFPS();
 		if ( m_vecVideoFrames.Size() > 0 && ( m_curTime - m_vecVideoFrames.Head()->time ) > ( frameDur * 6.0 ) )
 		{
@@ -747,7 +769,7 @@ bool CVideoMaterial::Update()
 	{
 		if ( m_vecVideoFrames.Head()->isValid() )
 		{
-			// Noodles; TODO skip frames
+			// TODO figure out how to skip frames
 			m_videoDecoder->decode( *m_vecVideoFrames.Head() );
 
 			VPXDecoder::IMAGE_ERROR err;
@@ -807,7 +829,7 @@ bool CVideoMaterial::SetVolume( float fVolume )
 
 	float vol = min( 1.0f, max( 0.0f, fVolume ) );
 	m_volume = vol;
-	// TODO - figure out what fucking value I'm supposed to use
+	// TODO figure out what fucking value I'm supposed to use
 	float log_volume = pow( vol, 0.2 );
 	m_directSoundBuffer->SetVolume( (LONG)( -10000 * ( 1.0f - log_volume ) ) );
 	return true;
@@ -830,12 +852,12 @@ bool CVideoMaterial::IsMuted()
 	return false;
 }
 
-
 VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t operation, void *pDevice, void *pData )
 {
 #ifdef _WIN32
 	if ( operation == VideoSoundDeviceOperation_t::SET_DIRECT_SOUND_DEVICE && pDevice )
 	{
+		// if we had a sound buffer before, kill it
 		if ( m_directSound )
 		{
 			m_soundKilled = true;
@@ -845,8 +867,8 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 
 		m_directSound = (IDirectSound8 *)pDevice;
 		CreateSoundBuffer();
-		return VideoResult::EVideoResult_t::SUCCESS;
+		return VideoResult_t::SUCCESS;
 	}
 #endif
-	return VideoResult::EVideoResult_t::SYSTEM_NOT_AVAILABLE;
+	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
 }

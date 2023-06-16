@@ -90,10 +90,13 @@ public:
 	virtual const wchar_t *GetCodecName( VideoEncodeCodec_t nCodec );
 
 private:
-	//IVideoMaterial *m_pMaterial;
+	int m_iUniqueID;
+
 	CUtlVector< IVideoMaterial *> m_vecVideos;
 #ifdef _WIN32
-	IDirectSound8 *m_directSound;
+	IDirectSound8 *m_pSoundDevice;
+#else
+	void *m_pSoundDevice;
 #endif
 };
 #endif
