@@ -146,6 +146,8 @@ public:
 	virtual void				GetVideoImageSize( int *pWidth, int *pHeight );
 
 #ifdef _WIN32
+	void SetAudioBufferCopied( bool bSecondHalf, bool bCopied );
+	bool WasAudioBufferCopied(bool bSecondHalf );
 	static unsigned _HandleBufferEvents( void *params );
 #endif
 

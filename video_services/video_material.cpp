@@ -330,6 +330,30 @@ bool CVideoMaterial::IsFinishedPlaying()
 }
 
 #ifdef _WIN32
+void CVideoMaterial::SetAudioBufferCopied( bool bSecondHalf, bool bCopied )
+{
+	m_mutex.Lock();
+	if ( bSecondHalf )
+		m_bufferCopiedSecond = bCopied;
+	else
+		m_bufferCopiedFirst = bCopied;
+	m_mutex.Unlock();
+}
+
+bool CVideoMaterial::WasAudioBufferCopied( bool bSecondHalf )
+{
+	bool result = false;
+
+	m_mutex.Lock();
+	if ( bSecondHalf )
+		result = m_bufferCopiedSecond;
+	else
+		result = m_bufferCopiedFirst;
+	m_mutex.Unlock();
+
+	return result;
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Thread function that deals with pausing the sound buffer if
 //	the other half of the sound buffer hasn't recently been filled
@@ -349,7 +373,7 @@ unsigned CVideoMaterial::_HandleBufferEvents( void *params )
 		switch ( result )
 		{
 		case WAIT_OBJECT_0:
-			if ( !m->m_bufferCopiedFirst )
+			if ( !m->WasAudioBufferCopied(false) )
 			{
 				m->m_mutex.Lock();
 				IDirectSoundBuffer_Stop( m->m_directSoundBuffer );
@@ -358,7 +382,7 @@ unsigned CVideoMaterial::_HandleBufferEvents( void *params )
 			break;
 
 		case WAIT_OBJECT_0 + 1:
-			if ( !m->m_bufferCopiedSecond )
+			if ( !m->WasAudioBufferCopied( true ) )
 			{
 				m->m_mutex.Lock();
 				IDirectSoundBuffer_Stop( m->m_directSoundBuffer );
@@ -594,7 +618,8 @@ void CVideoMaterial::RestartVideo()
 	m_demuxer->resetVideo();
 	m_curTime = m_videoTime = 0.0;
 	m_prevTicks = Plat_MSTime();
-	m_bufferCopiedFirst = m_bufferCopiedSecond = false;
+	SetAudioBufferCopied( false, false );
+	SetAudioBufferCopied( true, false );
 #ifdef _WIN32
 	if ( m_directSoundBuffer && !m_soundKilled )
 		m_directSoundBuffer->SetCurrentPosition( 0 );
@@ -665,8 +690,8 @@ bool CVideoMaterial::Update()
 	{
 		bHasAudio = true;
 		m_directSoundBuffer->GetCurrentPosition( &bufferCursor, NULL );
-		bUpdateBuffer = ( bufferCursor <= bufferHalfSize && !m_bufferCopiedSecond ) ||
-			( bufferCursor > bufferHalfSize && !m_bufferCopiedFirst );
+		bUpdateBuffer = ( bufferCursor <= bufferHalfSize && !WasAudioBufferCopied( true ) ) ||
+			( bufferCursor > bufferHalfSize && !WasAudioBufferCopied( false ) );
 
 		IDirectSoundBuffer_Play( m_directSoundBuffer, 0, 0, DSBPLAY_LOOPING );
 	}
@@ -680,8 +705,8 @@ bool CVideoMaterial::Update()
 		if ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE )
 		{
 			// which half of the buffer are we updating
-			m_bufferCopiedFirst = bufferCursor >= bufferHalfSize;
-			m_bufferCopiedSecond = bufferCursor < bufferHalfSize;
+			SetAudioBufferCopied( false, bufferCursor >= bufferHalfSize );
+			SetAudioBufferCopied( true, bufferCursor < bufferHalfSize );
 
 			LPVOID lpvAudioPtr1, lpvAudioPtr2;
 			DWORD dwAudioBytes1, dwAudioBytes2;
