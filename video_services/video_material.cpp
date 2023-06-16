@@ -83,7 +83,7 @@ CVideoMaterial::CVideoMaterial()
 	m_yTextureRegen = nullptr;
 	m_crTextureRegen = nullptr;
 	m_cbTextureRegen = nullptr;
-	
+
 #ifdef _WIN32
 	m_beginningEventHandle = NULL;
 	m_halfwayEventHandle = NULL;
@@ -105,6 +105,14 @@ CVideoMaterial::~CVideoMaterial()
 
 	DestroySoundBuffer();
 
+	IMaterial *material = m_videoMaterial;
+	m_videoMaterial.Shutdown();
+	// Cause the render target to go away
+	materials->UncacheUnusedMaterials();
+
+	if ( material )
+		material->DeleteIfUnreferenced();
+
 	if ( m_crTexture.IsValid() )
 	{
 		m_crTexture->SetTextureRegenerator( nullptr );
@@ -120,11 +128,6 @@ CVideoMaterial::~CVideoMaterial()
 		m_yTexture->SetTextureRegenerator( nullptr );
 		m_yTexture.Shutdown( true );
 	}
-
-	m_videoMaterial.Shutdown();
-
-	// Cause the render target to go away
-	materials->UncacheUnusedMaterials();
 
 	delete m_yTextureRegen;
 	delete m_crTextureRegen;
@@ -149,7 +152,7 @@ CVideoMaterial::~CVideoMaterial()
 	delete m_audioFrame;
 }
 
-bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFileName, void* pSoundDevice )
+bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFileName, void *pSoundDevice )
 {
 	Q_strncpy( m_videoPath, pVideoFileName, sizeof( m_videoPath ) );
 	m_mkvReader = new MkvReader( m_videoPath );
@@ -179,7 +182,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	if ( pSoundDevice )
 	{
 #ifdef WIN32
-		m_directSound = ( IDirectSound8 * )pSoundDevice;
+		m_directSound = (IDirectSound8 *)pSoundDevice;
 		CreateSoundBuffer();
 #endif
 	}
@@ -192,7 +195,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	Q_snprintf( crtexture, MAX_PATH, "%s_cr", pMaterialName );
 	char cbtexture[MAX_PATH];
 	Q_snprintf( cbtexture, MAX_PATH, "%s_cb", pMaterialName );
-	
+
 	int tex_flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_PROCEDURAL |
 		TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_SINGLECOPY;
 
@@ -229,10 +232,10 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 
 	// Refresh the material vars because apparently init doesn't do this
 	m_videoMaterial->Refresh();
-	
+
 	m_videoReady = true;
 	m_videoStarted = false;
-	
+
 	// stupid bullshit to get the first frame before we display the video
 	// Noodles; Test this actually works lol
 	m_yTexture->Download();
@@ -241,11 +244,11 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 
 	WebMFrame video_frame;
 	VPXDecoder::Image image;
-	while ( m_demuxer->readFrame( &video_frame, nullptr ))
+	while ( m_demuxer->readFrame( &video_frame, nullptr ) )
 	{
 		if ( !m_videoDecoder->decode( video_frame ) )
 			continue;
-			
+
 		VPXDecoder::IMAGE_ERROR err;
 		if ( ( err = m_videoDecoder->getImage( image ) ) == VPXDecoder::NO_FRAME )
 			continue;
@@ -259,7 +262,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 			m_yTexture->Download();
 			m_crTexture->Download();
 			m_cbTexture->Download();
-			
+
 			break;
 		}
 	}
@@ -311,7 +314,7 @@ bool CVideoMaterial::IsFinishedPlaying()
 #ifdef _WIN32
 unsigned CVideoMaterial::_HandleBufferEvents( void *params )
 {
-	CVideoMaterial *m = ( CVideoMaterial *)params;
+	CVideoMaterial *m = (CVideoMaterial *)params;
 
 	HANDLE hEvents[3];
 	hEvents[0] = m->m_beginningEventHandle;
@@ -393,23 +396,23 @@ bool CVideoMaterial::CreateSoundBuffer()
 		if ( snd_mute_losefocus->GetBool() )
 			dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
 	}
-	
+
 	if ( FAILED( m_directSound->CreateSoundBuffer( &dsbd, &m_directSoundBuffer, NULL ) ) )
 		return false;
 
 	// Set notification positions
 	DSBPOSITIONNOTIFY posNotify[2];
 	ZeroMemory( posNotify, sizeof( posNotify ) );
-	
+
 	// create nofitication
 	m_beginningEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
 	m_halfwayEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
 	m_bufferDestroyedEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
 
 	// notifcations at end and halfway mark
-	posNotify[0].dwOffset = (BUFFER_SIZE * m_waveFormat.nBlockAlign) - 1;
+	posNotify[0].dwOffset = ( BUFFER_SIZE * m_waveFormat.nBlockAlign ) - 1;
 	posNotify[0].hEventNotify = m_beginningEventHandle;
-	posNotify[1].dwOffset = (BUFFER_HALF_SIZE * m_waveFormat.nBlockAlign) - 1;  
+	posNotify[1].dwOffset = ( BUFFER_HALF_SIZE * m_waveFormat.nBlockAlign ) - 1;
 	posNotify[1].hEventNotify = m_halfwayEventHandle;
 
 	if ( FAILED( m_directSoundBuffer->QueryInterface( IID_IDirectSoundNotify, (LPVOID *)&m_directSoundNotify ) ) )
@@ -571,7 +574,7 @@ void CVideoMaterial::RestartVideo()
 	m_prevTicks = Plat_MSTime();
 	m_bufferCopiedFirst = m_bufferCopiedSecond = false;
 #ifdef _WIN32
-	if( m_directSoundBuffer && !m_soundKilled )
+	if ( m_directSoundBuffer && !m_soundKilled )
 		m_directSoundBuffer->SetCurrentPosition( 0 );
 #endif
 }
@@ -642,7 +645,7 @@ bool CVideoMaterial::Update()
 		m_directSoundBuffer->GetCurrentPosition( &bufferCursor, NULL );
 		bUpdateBuffer = ( bufferCursor <= bufferHalfSize && !m_bufferCopiedSecond ) ||
 			( bufferCursor > bufferHalfSize && !m_bufferCopiedFirst );
-		
+
 		IDirectSoundBuffer_Play( m_directSoundBuffer, 0, 0, DSBPLAY_LOOPING );
 	}
 #endif
@@ -663,7 +666,7 @@ bool CVideoMaterial::Update()
 
 			int numOutSamples = 0;
 			m_directSoundBuffer->Lock( bufferCursor < bufferHalfSize ? bufferHalfSize : 0,
-								bufferHalfSize, &lpvAudioPtr1, &dwAudioBytes1, &lpvAudioPtr2, &dwAudioBytes2, 0 );
+				bufferHalfSize, &lpvAudioPtr1, &dwAudioBytes1, &lpvAudioPtr2, &dwAudioBytes2, 0 );
 
 			if ( m_audioFrame->isValid() )
 			{
@@ -746,7 +749,7 @@ bool CVideoMaterial::Update()
 		{
 			// Noodles; TODO skip frames
 			m_videoDecoder->decode( *m_vecVideoFrames.Head() );
-			
+
 			VPXDecoder::IMAGE_ERROR err;
 			if ( ( err = m_videoDecoder->getImage( *m_image ) ) != VPXDecoder::NO_FRAME )
 			{
@@ -755,7 +758,7 @@ bool CVideoMaterial::Update()
 					m_yTextureRegen->m_decodedImage = m_image;
 					m_crTextureRegen->m_decodedImage = m_image;
 					m_cbTextureRegen->m_decodedImage = m_image;
-			
+
 					m_yTexture->Download();
 					m_crTexture->Download();
 					m_cbTexture->Download();
@@ -764,10 +767,10 @@ bool CVideoMaterial::Update()
 			m_videoTime = m_vecVideoFrames.Head()->time;
 			m_currentFrame++;
 		}
-				
+
 		m_vecVideoFrames.Remove( 0 );
 	}
-	
+
 	return true;
 }
 
@@ -839,7 +842,7 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 			DestroySoundBuffer();
 			m_soundKilled = false;
 		}
-		
+
 		m_directSound = (IDirectSound8 *)pDevice;
 		CreateSoundBuffer();
 		return VideoResult::EVideoResult_t::SUCCESS;

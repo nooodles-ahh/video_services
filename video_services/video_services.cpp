@@ -143,14 +143,14 @@ const char *CVideoServices::GetSupportedFileExtension( VideoSystem_t videoSystem
 
 VideoSystemFeature_t CVideoServices::GetSupportedFileExtensionFeatures( VideoSystem_t videoSystem, int extNum )
 {
-	if( videoSystem == VideoSystem_t::WEBM)
+	if ( videoSystem == VideoSystem_t::WEBM )
 		return VideoSystemFeature_t::FULL_PLAYBACK;
 	return VideoSystemFeature_t::NO_FEATURES;
 }
 
 VideoSystem_t CVideoServices::LocateVideoSystemForPlayingFile( const char *pFileName, VideoSystemFeature_t playMode )
 {
-	if ( Q_GetFileExtension( pFileName ) && !Q_strcmp(Q_GetFileExtension(pFileName), "webm") )
+	if ( Q_GetFileExtension( pFileName ) && !Q_strcmp( Q_GetFileExtension( pFileName ), "webm" ) )
 	{
 		return VideoSystem_t::WEBM;
 	}
@@ -160,7 +160,7 @@ VideoSystem_t CVideoServices::LocateVideoSystemForPlayingFile( const char *pFile
 VideoResult_t CVideoServices::LocatePlayableVideoFile( const char *pSearchFileName, const char *pPathID, VideoSystem_t *pPlaybackSystem, char *pPlaybackFileName, int fileNameMaxLen, VideoSystemFeature_t playMode )
 {
 	// is this even a webm?
-	if( !Q_GetFileExtension(pSearchFileName) || Q_strcmp( Q_GetFileExtension(pSearchFileName), "webm" ) )
+	if ( !Q_GetFileExtension( pSearchFileName ) || Q_strcmp( Q_GetFileExtension( pSearchFileName ), "webm" ) )
 		return VideoResult_t::VIDEO_SYSTEM_NOT_FOUND;
 
 	if ( !g_pFullFileSystem->FileExists( pSearchFileName, pPathID ) )
@@ -180,23 +180,23 @@ IVideoMaterial *CVideoServices::CreateVideoMaterial( const char *pMaterialName, 
 	char file_name[MAX_PATH];
 	Q_strncpy( file_name, pVideoFileName, sizeof( file_name ) );
 	char playable_video_file[MAX_PATH];
-	VideoResult_t found_video = LocatePlayableVideoFile( file_name, pPathID, nullptr, 
-														playable_video_file, MAX_PATH );
-													
-	if( found_video != VideoResult_t::SUCCESS && !PlayAlternateIfNotAvailable && 
-		( videoSystem != VideoSystem_t::DETERMINE_FROM_FILE_EXTENSION ) ) 
+	VideoResult_t found_video = LocatePlayableVideoFile( file_name, pPathID, nullptr,
+		playable_video_file, MAX_PATH );
+
+	if ( found_video != VideoResult_t::SUCCESS && !PlayAlternateIfNotAvailable &&
+		( videoSystem != VideoSystem_t::DETERMINE_FROM_FILE_EXTENSION ) )
 	{
 		return nullptr;
 	}
 
 	// We didn't the file, try and look for a webm
-	if( found_video != VideoResult_t::SUCCESS )
+	if ( found_video != VideoResult_t::SUCCESS )
 	{
 		Q_SetExtension( file_name, "webm", sizeof( file_name ) );
-		found_video = LocatePlayableVideoFile( file_name, pPathID, nullptr, 
-												playable_video_file, MAX_PATH );
+		found_video = LocatePlayableVideoFile( file_name, pPathID, nullptr,
+			playable_video_file, MAX_PATH );
 		// no file, very sad
-		if(found_video != VideoResult_t::SUCCESS )
+		if ( found_video != VideoResult_t::SUCCESS )
 			return nullptr;
 	}
 
@@ -211,7 +211,7 @@ IVideoMaterial *CVideoServices::CreateVideoMaterial( const char *pMaterialName, 
 		delete pMaterial;
 		return nullptr;
 	}
-	
+
 	// believe it or not we might have more than one video running at a time
 	m_vecVideos.AddToTail( pMaterial );
 	return pMaterial;
@@ -229,9 +229,10 @@ VideoResult_t CVideoServices::DestroyVideoMaterial( IVideoMaterial *pVideoMateri
 	return VideoResult_t::MATERIAL_NOT_FOUND;
 }
 
+static int iUniquieMatID = 0;
 int	CVideoServices::GetUniqueMaterialID()
 {
-	return 0;
+	return iUniquieMatID++;
 }
 
 // Plays a given video file until it completes or the user presses ESC, SPACE, or ENTER
@@ -243,7 +244,7 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 	DirectSoundCreate8( NULL, &m_directSound, NULL );
 	m_directSound->SetCooperativeLevel( (HWND)mainWindow, DSSCL_PRIORITY );
 #endif
-	
+
 	CVideoMaterial *video_material = (CVideoMaterial *)CreateVideoMaterial( "FullScreenVideo", pFileName, pPathID, playbackFlags, videoSystem, PlayAlternateIfNotAvailable );
 	if ( !video_material )
 	{
@@ -254,45 +255,74 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 		return VideoResult::EVideoResult_t::UNKNOWN_OPERATION;
 	}
 
-	bool previous_threading_state = materials->AllowThreading( false, 0 ); // 0x1e8
-	
-	float flVideoU, flVideoV;
-	int nVideoW, nVideoH;
-	video_material->GetVideoImageSize( &nVideoW, &nVideoH );
-	video_material->GetVideoTexCoordRange( &flVideoU, &flVideoV );
-	float flRightU = flVideoU - ( 1.0f / (float)nVideoW );
-	float flBottomV = flVideoV - ( 1.0f / (float)nVideoH );
+	float flU, flV;
+	int nVideoWidth, nVideoHeight;
+	video_material->GetVideoImageSize( &nVideoWidth, &nVideoHeight );
+	video_material->GetVideoTexCoordRange( &flU, &flV );
+	float flRightU = flU - ( 1.0f / (float)nVideoWidth );
+	float flBottomV = flV - ( 1.0f / (float)nVideoHeight );
+
+	// get the ratio of the video so we don't stretch it out
+	float flFrameRatio = ( (float)windowWidth / (float)windowHeight );
+	float flVideoRatio = ( (float)nVideoWidth / (float)nVideoHeight );
+
+	int nPlaybackWidth, nPlaybackHeight;
+	int x, y;
+	x = y = 0;
+
+	if ( flVideoRatio > flFrameRatio )
+	{
+		nPlaybackWidth = windowWidth;
+		nPlaybackHeight = ( windowWidth / flVideoRatio );
+		y = ( windowHeight - nPlaybackHeight ) / 2;
+	}
+	else if ( flVideoRatio < flFrameRatio )
+	{
+		nPlaybackWidth = ( windowHeight * flVideoRatio );
+		nPlaybackHeight = windowHeight;
+		x = ( windowWidth - nPlaybackWidth ) / 2;
+	}
+	else
+	{
+		nPlaybackWidth = windowWidth;
+		nPlaybackHeight = windowHeight;
+	}
 
 	CMatRenderContextPtr pRenderContext( materials );
-#ifdef _WIN32
-	MSG msg;
-#endif
+
+	bool oldMaterialThreading = materials->AllowThreading( false, 0 ); // 0x1e8
 
 	while ( 1 )
 	{
-		// TODO - figure out OS independant window updating and input polling
-#ifdef _WIN32
-		while ( PeekMessage( &msg, nullptr, 0, 0, PM_REMOVE ) ) 
+#ifdef WIN32
+		MSG msg;
+		while ( PeekMessage( &msg, nullptr, 0, 0, PM_REMOVE ) )
 		{
 			TranslateMessage( &msg );
 			DispatchMessage( &msg );
 		}
 
-		if ( GetAsyncKeyState( VK_ESCAPE ) < 0 || GetAsyncKeyState( VK_SPACE ) < 0 || GetAsyncKeyState( VK_RETURN ) < 0 ) 
+		if ( GetAsyncKeyState( VK_ESCAPE ) < 0 || GetAsyncKeyState( VK_SPACE ) < 0 || GetAsyncKeyState( VK_RETURN ) < 0 )
 			break;
 #endif
-		
-		pRenderContext->DrawScreenSpaceRectangle( video_material->GetMaterial(), 0, 0, windowWidth, windowHeight, 0, 0, 
-													nVideoW - 1, nVideoH - 1, nVideoW / flRightU, nVideoH / flBottomV );
+
+		// offset x1 and y1 by -1 so you don't see any bleeding. I've probably messed up something somewhere
+		pRenderContext->DrawScreenSpaceRectangle( video_material->GetMaterial(), x, y, nPlaybackWidth, nPlaybackHeight, 0, 0,
+			nVideoWidth - 1, nVideoHeight - 1, nVideoWidth / flRightU, nVideoHeight / flBottomV );
+
+		// video finished?
 		if ( !video_material->Update() )
 			break;
-		
+
 		materials->SwapBuffers(); // 0xa0 
 	}
-	
-	materials->AllowThreading( previous_threading_state, 0 ); // 0x1e8
+
+	materials->AllowThreading( oldMaterialThreading, 0 ); // 0x1e8
 
 	DestroyVideoMaterial( video_material );
+
+	// clear so incase we have another video of a differing aspect ratio
+	pRenderContext->ClearBuffers( true, false, false );
 
 #ifdef _WIN32
 	m_directSound->Release();
@@ -313,7 +343,7 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 		{
 			m_vecVideos[vid]->SoundDeviceCommand( operation, m_directSound, pData );
 		}
-		
+
 		return VideoResult::EVideoResult_t::SUCCESS;
 	}
 #endif
