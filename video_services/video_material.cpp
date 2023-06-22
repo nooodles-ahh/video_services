@@ -116,6 +116,7 @@ CVideoMaterial::~CVideoMaterial()
 {
 	m_videoEnded = true;
 	m_videoStopped = true;
+	m_videoFrames.Purge();
 
 	DestroySoundBuffer();
 
@@ -603,10 +604,10 @@ float CVideoMaterial::GetCurrentVideoTime()
 
 bool CVideoMaterial::NeedNewFrame( double curtime )
 {
-	if ( m_vecVideoFrames.Size() == 0 )
+	if ( m_videoFrames.Count() == 0 )
 		return true;
 
-	if ( m_vecVideoFrames.Tail()->time <= curtime )
+	if ( m_videoFrames.Tail()->time <= curtime )
 		return true;
 
 	return false;
@@ -657,7 +658,7 @@ bool CVideoMaterial::Update()
 	if ( m_demuxer->isEOS() )
 	{
 		// Noodles; this might be stupid
-		if ( m_vecVideoFrames.Size() > 0 )
+		if ( m_videoFrames.Count() > 0 )
 		{
 #ifdef _WIN32
 			IDirectSoundBuffer_Stop( m_directSoundBuffer );
@@ -774,7 +775,7 @@ bool CVideoMaterial::Update()
 				delete video_frame;
 			}
 			else
-				m_vecVideoFrames.AddToTail( video_frame );
+				m_videoFrames.Insert( video_frame );
 		}
 	}
 
@@ -784,18 +785,18 @@ bool CVideoMaterial::Update()
 		// if our current time is out, roll it back
 		// Noodles; I feel this will cause issues, but it seems fine right now
 		double frameDur = 1.0 / m_frameRate.GetFPS();
-		if ( m_vecVideoFrames.Size() > 0 && ( m_curTime - m_vecVideoFrames.Head()->time ) > ( frameDur * 6.0 ) )
+		if ( m_videoFrames.Count() > 0 && ( m_curTime - m_videoFrames.Head()->time ) > ( frameDur * 6.0 ) )
 		{
 			m_curTime = m_videoTime - frameDur;
 		}
 	}
 
-	while ( m_vecVideoFrames.Size() > 0 && m_curTime >= m_videoTime )
+	while ( m_videoFrames.Count() > 0 && m_curTime >= m_videoTime )
 	{
-		if ( m_vecVideoFrames.Head()->isValid() )
+		if ( m_videoFrames.Head()->isValid() )
 		{
 			// TODO figure out how to skip frames
-			m_videoDecoder->decode( *m_vecVideoFrames.Head() );
+			m_videoDecoder->decode( *m_videoFrames.Head() );
 
 			VPXDecoder::IMAGE_ERROR err;
 			if ( ( err = m_videoDecoder->getImage( *m_image ) ) != VPXDecoder::NO_FRAME )
@@ -811,11 +812,13 @@ bool CVideoMaterial::Update()
 					m_cbTexture->Download();
 				}
 			}
-			m_videoTime = m_vecVideoFrames.Head()->time;
+			m_videoTime = m_videoFrames.Head()->time;
 			m_currentFrame++;
 		}
 
-		m_vecVideoFrames.Remove( 0 );
+		WebMFrame *frame = m_videoFrames.RemoveAtHead();
+		if( frame )
+			delete frame;
 	}
 
 	return true;
