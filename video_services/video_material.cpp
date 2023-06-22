@@ -13,6 +13,7 @@
 #include "tier3/tier3.h"
 #include "materialsystem/imaterial.h"
 #include "filesystem.h"
+#include "tier1/utlbuffer.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -30,7 +31,7 @@ void CYUVTextureRegenerator::RegenerateTextureBits( ITexture *pTexture, IVTFText
 	unsigned char *imageData = pVTFTexture->ImageData();
 	int rowSize = pVTFTexture->RowSizeInBytes( 0 );
 	// Bik shader only supports YUV420
-	// TODO - support more video colour formats
+	// TODO - support more video colour formats but I will need shaders
 	if ( m_decodedImage && m_decodedImage->chromaShiftW == 1 && m_decodedImage->chromaShiftH == 1 )
 	{
 		unsigned char *pixels = m_decodedImage->planes[m_channel];
@@ -145,7 +146,7 @@ CVideoMaterial::~CVideoMaterial()
 
 	IMaterial *material = m_videoMaterial;
 	m_videoMaterial.Shutdown();
-	// Cause the render target to go away
+	// Removes any material that might reference the video texture
 	materials->UncacheUnusedMaterials();
 
 	// kill it if it remains
@@ -191,7 +192,15 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 		return false;
 	}
 
+#ifdef WIN32
+	SYSTEM_INFO info;
+	GetSystemInfo( &info );
+	int numthreads = clamp( info.dwNumberOfProcessors - 2, 1, 8);
+	m_videoDecoder = new VPXDecoder( *m_demuxer, numthreads );
+#else
+	// TODO - Get linux core count
 	m_videoDecoder = new VPXDecoder( *m_demuxer, 4 );
+#endif
 	m_audioDecoder = new OpusVorbisDecoder( *m_demuxer );
 	m_pcm = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
 	m_videoWidth = m_demuxer->getWidth();
@@ -207,7 +216,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	}
 
 	// ---------------------------
-	// create texture
+	// texture
 	char ytexture[MAX_PATH];
 	Q_snprintf( ytexture, MAX_PATH, "%s_y", pMaterialName );
 	char crtexture[MAX_PATH];
@@ -218,9 +227,11 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	int tex_flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_PROCEDURAL |
 		TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_SINGLECOPY;
 
+	// need a power of 2 or weird things happen
 	m_textureWidth = SmallestPowerOfTwoGreaterOrEqual( m_videoWidth );
 	m_textureHeight = SmallestPowerOfTwoGreaterOrEqual( m_videoHeight );
 
+	// create the textures
 	m_yTexture.InitProceduralTexture( ytexture, "VideoCacheTextures", m_textureWidth, m_textureHeight, IMAGE_FORMAT_I8, tex_flags );
 	// CB and CR are half the size of the Y (the brightness)
 	m_cbTexture.InitProceduralTexture( cbtexture, "VideoCacheTextures", m_textureWidth >> 1, m_textureHeight >> 1, IMAGE_FORMAT_I8, tex_flags );
@@ -234,7 +245,8 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_cbTexture->SetTextureRegenerator( m_cbTextureRegen );
 
 	// ---------------------------
-	// create material
+	// material
+	// 
 	// Use the Bik shader as it deals with YUV420
 	KeyValues *pVMTKeyValues = new KeyValues( "Bik" );
 	pVMTKeyValues->SetString( "$ytexture", ytexture );
@@ -250,17 +262,13 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_videoMaterial.Init( pMaterialName, pVMTKeyValues );
 
 	// Refresh the material vars because apparently init doesn't do this
+	// and retains the previous video's frame
 	m_videoMaterial->Refresh();
 
 	m_videoReady = true;
 	m_videoStarted = false;
 
-	// stupid bullshit to get the first frame before we display the video
-	// Noodles; Test this actually works lol
-	m_yTexture->Download();
-	m_crTexture->Download();
-	m_cbTexture->Download();
-
+	// update the procedural texture with the first frame of the video
 	WebMFrame video_frame;
 	VPXDecoder::Image image;
 	while ( m_demuxer->readFrame( &video_frame, nullptr ) )
@@ -286,11 +294,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 		}
 	}
 
-	m_yTextureRegen->m_decodedImage = nullptr;
-	m_crTextureRegen->m_decodedImage = nullptr;
-	m_cbTextureRegen->m_decodedImage = nullptr;
 	m_demuxer->resetVideo();
-
 	return true;
 }
 
