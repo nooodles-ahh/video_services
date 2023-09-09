@@ -1,30 +1,65 @@
 # Webm Video Services
+A functional work in progress drop-in replacement for Source SDK 2013's video services to play codecs commonly stored in webms. This is based on work from [libsimplewebm](https://github.com/zaps166/libsimplewebm), [AVI Materials for Source](https://developer.valvesoftware.com/wiki/AVI_Materials) and [Godot's Webm playback](https://github.com/godotengine/godot/blob/b1f5cee7d9a1f509ef8990f3b8405c74e83a20cc/modules/webm/video_stream_webm.cpp)
 
-A work in progress drop-in replacement for Source SDK 2013's video services. Supports VP8 and VP9 video, and Vorbis and Opus audio. Based on [libsimplewebm](https://github.com/zaps166/libsimplewebm), [AVI Materials for Source](https://developer.valvesoftware.com/wiki/AVI_Materials) and [Godot's Webm playback](https://github.com/godotengine/godot/blob/b1f5cee7d9a1f509ef8990f3b8405c74e83a20cc/modules/webm/video_stream_webm.cpp)
-
-This is intended for standalone Source engine mods released on Steam. This can be used for standard sourcemods but sound playback will not work, it's doable on Windows by creating a DirectSound interface object. See the beginning of the [PlayVideoFileFullScreen method](https://github.com/nooodles-ahh/video_services/blob/master/video_services/video_services.cpp#L222-L228).
-
-Sound playback is currently only available on Windows. I'll figure it out for Linux when I feel like it.
+This is intended for standalone Source engine mods released on Steam. This can be used for standard sourcemods but sound playback will not work out of the box, you can create a new DirectSound interface object on Windows, see the [PlayVideoFileFullScreen method](https://github.com/nooodles-ahh/video_services/blob/master/video_services/video_services.cpp#L222-L228) on how you might do that.
 
 # Rationale
-The version of Source provided to modders only has support for Bink which isn't well suited for HD video, and Quicktime video if you're using Windows and install the long since abandoned Quicktime player.
+The version of Source provided to modders only has support for Bink which isn't well suited for HD video, and Quicktime video if you install the long since abandoned Quicktime player. There is also the issue of licensing as Bink is a proprietary codec, so despite it being provided with Source you're not actually allowed to use it in mods on Steam unless you acquire a license.
 
-At the time of writting I'm developer for the infamous _game_ Hunt Down the Freeman. The mod makes heavy use of cutscenes and as Bink is the only real option, that's what was used. This 
-resulted in about 6.6GB of cutscenes of acceptable quality. The same videos encoded using VP9 and Opus only take up a little over 900MB. So about 13%-16% of the original size for equal 
-or, in most cases, better quality.
+The primary reason for having written this is that at the time of writing I'm a developer for the infamous _game_ Hunt Down the Freeman. The game makes heavy use of cutscenes and as Bink was the only option, that's what was used. This resulted in about 6.6GB of video of accept quality, for an hour's worth of content. The same content encoded using VP9 and Opus only takes up a little over 900MB. So about 13%-16% of the original size for equal or, in most cases, better quality. The only instance of lower quality I noticed was in dark scenes, but that's likely due to the absurd bitrate initially used for the Bink versions.
+
+# Support
+<table>
+	<tr>
+		<td></td>
+		<td colspan="3"><b>Video</b></td>
+		<td colspan="2"><b>Audio</b></td>
+	</tr>
+	<tr>
+		<td><b>Codec</b></td>
+		<td><b>VP8</b></td>
+		<td><b>VP9</b></td>
+		<td><b>AV1</b></td>
+		<td><b>Vorbis</b></td>
+		<td><b>Opus</b></td>
+	</tr>
+	<tr>
+		<td><b>Supported?</b></td>
+		<td>:white_check_mark:</td>
+		<td>:white_check_mark:</td>
+		<td>:x:</td>
+		<td>:white_check_mark:</td>
+		<td>:white_check_mark:</td>
+	</tr>
+</table>
+
+Video playback works on both Linux and Windows, but only Windows has audio playback for the time being. I may support AV1 in the future as I have been asked about.
+
+I have no plans to support anything other than Linux and Windows but may indicentally become usable on other platforms as Linux audio playback makes use of SDL2.
 
 # Encoding compatible webms
-Peferably you want to be using VP9 and opus for the best results and ensure the pixel format is YUV420.
-The easiest way to encode a compatiable webm is probably to use [WebmConverter](https://argorar.github.io/WebMConverter/). If you're using ffmpeg make sure to include the argument `-pix_fmt yuv420p` if you're not unsure of the source video is in the correct format.
+The easiest way to encode a compatiable webm is probably to use [WebmConverter](https://argorar.github.io/WebMConverter/), as encoding webm's is what it's designed to do. 
+As it is 2023, you will probably want to be using VP9 and Opus for the best results, you will also need to ensure that the pixel format is YUV420 as other formats are not currently supported. WebmConverter does this by default, but you need to make sure this is done if you're using another encoding program such as FFmpeg or HandBrake.
 
 # Building
 - Add `$Include "video_services\vpc_scripts\projects.vgc"` to `vpc_scripts\default.vgc` in your mod.
 - Include `video_services` in your project group
 - Regenerate and build
-- Copy vpx.dll and the resulting video_services.dll into the relevant bin folder. i.e. If you're a mod on Steam it would go in `Half-Life 2\bin`. And if you're not on Steam it would go in `sourcemods\hl2\bin`.
+- Copy vpx.dll and the resulting video_services.dll into the relevant bin folder
+
+# TODO
+- The sound system is shutdown before video services is, which may result in a crash if you're doing something like a main menu background video
+- Audio playback on Linux
+- Rewrite my threaded code as I don't know what I'm doing
+- Support for other pixel formats
+
+# Issues
+- All video service features are not present such as video recording
+- Not everything works identically to BINK videos such as when the video will pause and audio volume
+- Some webms may not work if they a-typical such as having a varible framerate or resolution changes, or may desync at abnormally low framerates
 
 # Sourcemod usage
-If you don't need audio you can use this in sourcemods by placing this block of code in `CHLClient::Init`. Anywhere after all the interfaces are connected, specifically I'd put it after the `WORKSHOP_IMPORT_ENABLED` block.
+If you don't need audio or have created a new DirectSound object you can use this in sourcemods by placing this block of code in `CHLClient::Init`. Anywhere after all the interfaces are connected, specifically I'd put it after the `WORKSHOP_IMPORT_ENABLED` block.
 ```cpp
 // disconnect the original video services
 if ( g_pVideo )
@@ -53,12 +88,4 @@ if ( video_services_module != nullptr )
 }
 ```
 
-If you needed the old video services still, you could make a new global specfically for this library, and just use that when applicable.
-
-# Issues
-- All video service features are not present such as video recording
-- Not everything works identically to BINK videos such as when the video will pause and audio volume
-- The sound system is shutdown before video services is, so you may crash on shutdown depending on what you're doing
-- No audio playback on Linux (yet)
-- I don't know how to write safe threaded code
-- Depending on the state of your source dll vpc's it might not like compiling in debug
+If you needed the old video services still, I would recommend instaniating a new video services object specfically for the library, and only use it when applicable.
