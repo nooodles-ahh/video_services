@@ -325,6 +325,24 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 
 		return VideoResult_t::SUCCESS;
 	}
+#elif _LINUX
+
+	// Maybe called when changing audio device?
+	if( operation == VideoSoundDeviceOperation_t::SET_SDL_SOUND_DEVICE )
+	{
+		ConMsg("\nSDL Sound Device Set\n\n");
+	}
+	// Called on start up and sound restart
+	else if( operation == VideoSoundDeviceOperation_t::SET_SDL_PARAMS )
+	{
+		FOR_EACH_VEC( m_vecVideos, vid )
+			m_vecVideos[vid]->SoundDeviceCommand( operation, pDevice, pData );
+	}
+	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
+	{
+		FOR_EACH_VEC( m_vecVideos, vid )
+			m_vecVideos[vid]->SoundDeviceCommand( operation, pDevice, pData );
+	}
 #endif
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
 }

@@ -14,6 +14,10 @@
 #include "materialsystem/imaterial.h"
 #include "filesystem.h"
 
+#ifdef _LINUX
+#include "SDL2/SDL_audio.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -618,9 +622,9 @@ void CVideoMaterial::RestartVideo()
 	m_demuxer->resetVideo();
 	m_curTime = m_videoTime = 0.0;
 	m_prevTicks = Plat_MSTime();
+#ifdef _WIN32
 	SetAudioBufferCopied( false, false );
 	SetAudioBufferCopied( true, false );
-#ifdef _WIN32
 	if ( m_directSoundBuffer && !m_soundKilled )
 		m_directSoundBuffer->SetCurrentPosition( 0 );
 #endif
@@ -893,6 +897,21 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 		m_directSound = (IDirectSound8 *)pDevice;
 		CreateSoundBuffer();
 		return VideoResult_t::SUCCESS;
+	}
+#elif _LINUX
+	// Maybe called when changing audio device?
+	if( operation == VideoSoundDeviceOperation_t::SET_SDL_SOUND_DEVICE )
+	{
+		ConMsg("\nSDL Sound Device Set\n\n");
+	}
+	// Called on start up and sound restart
+	else if( operation == VideoSoundDeviceOperation_t::SET_SDL_PARAMS )
+	{
+		SDL_AudioSpec *pSpec = (SDL_AudioSpec *)pData;
+		ConLog("Freq: %d\nFormat: %d\nChannels: %d\nSilence: %d\nSamples: %d\nSize: %d\n", pSpec->freq, pSpec->format, pSpec->channels, pSpec->silence, pSpec->samples, pSpec->size);
+	}
+	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
+	{
 	}
 #endif
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
