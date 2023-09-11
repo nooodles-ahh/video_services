@@ -156,6 +156,7 @@ private:
 	bool CreateSoundBuffer();
 	void DestroySoundBuffer();
 	void RestartVideo();
+	void MixSDLSoundBuffer( uint8_t *pBuffer, int sampleCount );
 
 private:
 
@@ -191,6 +192,7 @@ private:
 	char m_videoPath[MAX_PATH];
 
 	short *m_pcm;
+	short *m_pcmTemp;
 	int m_pcmOverflow;
 	int m_pcmOffset;
 

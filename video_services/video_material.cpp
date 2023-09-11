@@ -21,7 +21,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define BUFFER_SIZE 15360
+#define BUFFER_SIZE 4096
 #define BUFFER_HALF_SIZE BUFFER_SIZE * 0.5
 
 //=============================================================================
@@ -165,6 +165,7 @@ CVideoMaterial::~CVideoMaterial()
 #endif
 
 	delete m_pcm;
+	delete m_pcmTemp;
 	delete m_image;
 	delete m_audioDecoder;
 	delete m_videoDecoder;
@@ -197,6 +198,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_videoDecoder = new VPXDecoder( *m_demuxer, 4 );
 	m_audioDecoder = new OpusVorbisDecoder( *m_demuxer );
 	m_pcm = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
+	m_pcmTemp = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
 	m_videoWidth = m_demuxer->getWidth();
 	m_videoHeight = m_demuxer->getHeight();
 	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); // This is a guessed framerate from the first 50 frames
@@ -702,7 +704,11 @@ bool CVideoMaterial::Update()
 #endif
 
 	// Read until we've filled the buffer or got enough frames
-	while ( ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE ) || ( !bHasAudio && NeedNewFrame( m_curTime ) ) )
+	while ( ( NeedNewFrame( m_curTime ) ) 
+#ifdef _WIN32
+		|| ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE ) 
+#endif
+		)
 	{
 #ifdef _WIN32
 		// SHOULD THE BUFFER BE UPDATED?
@@ -760,6 +766,24 @@ bool CVideoMaterial::Update()
 
 			m_directSoundBuffer->Unlock( lpvAudioPtr1, dwAudioBytes1, lpvAudioPtr2, dwAudioBytes2 );
 
+		}
+#elif _LINUX
+		if ( m_audioFrame->isValid() )
+		{
+			int numOutSamples = 0;
+			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcmTemp, numOutSamples );
+			if( m_pcmOffset + numOutSamples > 4096 )
+			{
+				memcpy( m_pcm + m_pcmOffset, m_pcmTemp, (4096 - m_pcmOffset) * sizeof( short ) );
+				m_pcmOffset = 4096;
+			}
+			else
+			{
+				memcpy( m_pcm + m_pcmOffset, m_pcmTemp, numOutSamples * sizeof( short ) );
+				m_pcmOffset += numOutSamples;
+			}
+			
+			
 		}
 #endif
 
@@ -823,6 +847,18 @@ bool CVideoMaterial::Update()
 	}
 
 	return true;
+}
+
+void CVideoMaterial::MixSDLSoundBuffer( Uint8 *stream, int len )
+{
+	if ( !m_audioDecoder->isOpen() )
+		return;
+	
+	SDL_MixAudioFormat( stream, (Uint8*)m_pcm, AUDIO_S16LSB, min(len, m_pcmOffset), SDL_MIX_MAXVOLUME );
+	if(m_pcmOffset >= 4096)
+	{
+		m_pcmOffset = 0;
+	}
 }
 
 // Material / Texture Info functions
@@ -908,10 +944,11 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	else if( operation == VideoSoundDeviceOperation_t::SET_SDL_PARAMS )
 	{
 		SDL_AudioSpec *pSpec = (SDL_AudioSpec *)pData;
-		ConLog("Freq: %d\nFormat: %d\nChannels: %d\nSilence: %d\nSamples: %d\nSize: %d\n", pSpec->freq, pSpec->format, pSpec->channels, pSpec->silence, pSpec->samples, pSpec->size);
+		ConMsg("Freq: %d\nFormat: %d\nChannels: %d\nSilence: %d\nSamples: %d\nSize: %d\n", pSpec->freq, pSpec->format, pSpec->channels, pSpec->silence, pSpec->samples, pSpec->size);
 	}
 	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
 	{
+		MixSDLSoundBuffer( (Uint8 *)pDevice, *(int *)pData );
 	}
 #endif
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
