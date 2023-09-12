@@ -21,9 +21,10 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define BUFFER_SIZE 15360
-#define BUFFER_HALF_SIZE BUFFER_SIZE * 0.5
-#define BUFFER_LENGTH_SECONDS 4
+#define BUFFER_LENGTH_SECONDS 20
+#define BUFFER_FREQ 44100
+#define BUFFER_SIZE_BYTES 4
+#define BUFFER_SIZE 81920 * 5
 
 //=============================================================================
 // 
@@ -84,14 +85,11 @@ CVideoMaterial::CVideoMaterial()
 	m_videoStopped = false;
 	m_videoEnded = false;
 
-	m_bufferCopiedFirst = false;
-	m_bufferCopiedSecond = false;
-
 	m_soundKilled = false;
 
 	m_videoPath[0] = '\0';
-	m_pcmOverflow = 0;
-	m_pcmOffset = 0;
+	//m_pcmOverflowSize = 0;
+	//m_pcmOverflowOffset = 0;
 	m_volume = 0.0f;
 	m_videoTime = 0.0;
 	m_curTime = 0.0;
@@ -103,6 +101,8 @@ CVideoMaterial::CVideoMaterial()
 	m_crTextureRegen = nullptr;
 	m_cbTextureRegen = nullptr;
 
+	m_pAudioDevice = nullptr;
+
 #ifdef _WIN32
 	m_beginningEventHandle = NULL;
 	m_halfwayEventHandle = NULL;
@@ -110,7 +110,7 @@ CVideoMaterial::CVideoMaterial()
 
 	ZeroMemory( &m_waveFormat, sizeof( WAVEFORMATEX ) );
 	m_directSoundBuffer = nullptr;
-	m_directSound = nullptr;
+	
 	m_directSoundNotify = nullptr;
 
 	m_hTest = NULL;
@@ -173,6 +173,9 @@ CVideoMaterial::~CVideoMaterial()
 	delete m_mkvReader;
 
 	delete m_audioFrame;
+
+	delete m_pAudioBuffer;
+
 }
 
 bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFileName, void *pSoundDevice )
@@ -201,14 +204,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_videoWidth = m_demuxer->getWidth();
 	m_videoHeight = m_demuxer->getHeight();
 	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); // This is a guessed framerate from the first 50 frames
-
-	if ( pSoundDevice )
-	{
-#ifdef WIN32
-		m_directSound = (IDirectSound8 *)pSoundDevice;
-#endif
-		CreateSoundBuffer(pSoundDevice);
-	}
+	CreateSoundBuffer(pSoundDevice);
 
 	// ---------------------------
 	// create texture
@@ -335,48 +331,13 @@ bool CVideoMaterial::IsFinishedPlaying()
 }
 
 #ifdef _WIN32
-void CVideoMaterial::SetAudioBufferCopied( bool bSecondHalf, bool bCopied )
-{
-	m_mutex.Lock();
-	if ( bSecondHalf )
-		m_bufferCopiedSecond = bCopied;
-	else
-		m_bufferCopiedFirst = bCopied;
-	m_mutex.Unlock();
-}
-
-bool CVideoMaterial::WasAudioBufferCopied( bool bSecondHalf )
-{
-	bool result = false;
-
-	m_mutex.Lock();
-	if ( bSecondHalf )
-		result = m_bufferCopiedSecond;
-	else
-		result = m_bufferCopiedFirst;
-	m_mutex.Unlock();
-
-	return result;
-}
-
 //-----------------------------------------------------------------------------
 // Purpose: Thread function that deals with pausing the sound buffer if
 //	the other half of the sound buffer hasn't recently been filled
 //-----------------------------------------------------------------------------
 unsigned CVideoMaterial::_HandleBufferEvents( void *params )
 {
-	CVideoMaterial *m = (CVideoMaterial *)params;
-
-	HANDLE hEvents[3];
-	hEvents[0] = m->m_beginningEventHandle;
-	hEvents[1] = m->m_halfwayEventHandle;
-	hEvents[2] = m->m_bufferDestroyedEventHandle;
-
-	while ( true )
-	{
-		DWORD result = WaitForMultipleObjects( 3, hEvents, FALSE, INFINITE );
-		switch ( result )
-		{
+	CVideoMaterial *m = (CVideoMaterial *)params;m_pAudioBuffer1
 		case WAIT_OBJECT_0:
 			if ( !m->WasAudioBufferCopied(false) )
 			{
@@ -423,24 +384,26 @@ bool CVideoMaterial::CreateSoundBuffer(void *pSoundDevice)
 	}
 
 #ifdef _LINUX
-	SDL_AudioSpec *pSpec = (SDL_AudioSpec*)pSoundDevice;
-	//Calculate per sample bytes
-	m_nFormat = pSpec->format;
-	m_nBytesPerSample = pSpec->channels * ( SDL_AUDIO_BITSIZE( pSpec->format ) / 8 );
-	//Calculate bytes per second
-	m_nFreq= pSpec->freq;
-	m_nBytesPerSecond = pSpec->freq * m_nBytesPerSample;
+	// todo; Error checking
+
+	// this is a copy recieved from services so we don't need to allocate it
+	m_pAudioDevice = (SDL_AudioSpec*)pSoundDevice;
+	m_nBytesPerSample = m_pAudioDevice->channels * ( SDL_AUDIO_BITSIZE( m_pAudioDevice->format ) / 8 );
+	m_nBytesPerSecond = m_pAudioDevice->freq * m_nBytesPerSample;
 
 	//Calculate buffer size
-	m_nAudioBufferSize = BUFFER_LENGTH_SECONDS * m_nBytesPerSecond;
+	m_nAudioBufferSize = BUFFER_SIZE;
 
 	//Allocate and initialize byte buffer
 	m_pAudioBuffer = new Uint8[ m_nAudioBufferSize ];
 	memset( m_pAudioBuffer, 0, m_nAudioBufferSize );
 
 	return true;
+
 #elif _WIN32
-	if ( !m_directSound )
+	m_pSoundDevice = (IDirectSound8 *)pSoundDevice;
+
+	if ( !m_pSoundDevice )
 		return false;
 
 
@@ -471,7 +434,7 @@ bool CVideoMaterial::CreateSoundBuffer(void *pSoundDevice)
 			dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
 	}
 
-	if ( FAILED( m_directSound->CreateSoundBuffer( &dsbd, &m_directSoundBuffer, NULL ) ) )
+	if ( FAILED( m_pSoundDevice->CreateSoundBuffer( &dsbd, &m_directSoundBuffer, NULL ) ) )
 		return false;
 
 	// Set notification positions
@@ -647,8 +610,6 @@ void CVideoMaterial::RestartVideo()
 	m_curTime = m_videoTime = 0.0;
 	m_prevTicks = Plat_MSTime();
 #ifdef _WIN32
-	SetAudioBufferCopied( false, false );
-	SetAudioBufferCopied( true, false );
 	if ( m_directSoundBuffer && !m_soundKilled )
 		m_directSoundBuffer->SetCurrentPosition( 0 );
 #endif
@@ -706,48 +667,76 @@ bool CVideoMaterial::Update()
 		}
 	}
 
-	bool bHasAudio = false;
+	bool bHasAudio = HasAudio();
 	bool bUpdateBuffer = false;
-	int numBytesRead = 0;
-
-#ifdef _WIN32
-	DWORD bufferCursor = 0;
-	DWORD bufferHalfSize = BUFFER_HALF_SIZE * m_waveFormat.nBlockAlign;
 	// if we have audio check if we should update the buffer and make sure we're playing
-	if ( m_directSoundBuffer )
+	if(bHasAudio)
 	{
-		bHasAudio = true;
-		m_directSoundBuffer->GetCurrentPosition( &bufferCursor, NULL );
-		bUpdateBuffer = ( bufferCursor <= bufferHalfSize && !WasAudioBufferCopied( true ) ) ||
-			( bufferCursor > bufferHalfSize && !WasAudioBufferCopied( false ) );
-
+#ifdef _WIN32
 		IDirectSoundBuffer_Play( m_directSoundBuffer, 0, 0, DSBPLAY_LOOPING );
-	}
 #endif
+	}
 
 	// Read until we've filled the buffer or got enough frames
-	while ( ( NeedNewFrame( m_curTime ) || bUpdateBuffer ) 
-#ifdef _WIN32
-		|| ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE ) 
-#endif
-		)
+	while ( NeedNewFrame( m_curTime ) )
 	{
-#ifdef _WIN32
-		// SHOULD THE BUFFER BE UPDATED?
-		if ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE )
+		int nPCMOverflowSize = 0;
+		int nPCMOverflowOffset = 0;
+
+		if ( m_audioFrame->isValid() )
 		{
-			// which half of the buffer are we updating
-			SetAudioBufferCopied( false, bufferCursor >= bufferHalfSize );
-			SetAudioBufferCopied( true, bufferCursor < bufferHalfSize );
-
-			LPVOID lpvAudioPtr1, lpvAudioPtr2;
-			DWORD dwAudioBytes1, dwAudioBytes2;
-
+			int nBytesRead = 0;
 			int numOutSamples = 0;
-			m_directSoundBuffer->Lock( bufferCursor < bufferHalfSize ? bufferHalfSize : 0,
-				bufferHalfSize, &lpvAudioPtr1, &dwAudioBytes1, &lpvAudioPtr2, &dwAudioBytes2, 0 );
+			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
+			nBytesRead = numOutSamples * m_nBytesPerSample;
 
-			if ( m_audioFrame->isValid() )
+			// if the current number of samples is larger than what we can fit save it for the next half
+			if ( (m_nAudioBufferWriteOffset + nBytesRead) >= m_nAudioBufferSize )
+			{
+				// save amount gone over
+				nPCMOverflowSize = (m_nAudioBufferWriteOffset + nBytesRead) - m_nAudioBufferSize;
+				nPCMOverflowOffset = numOutSamples - ( nPCMOverflowSize / m_nBytesPerSample);
+				nBytesRead -= nPCMOverflowSize;
+			}
+
+			memcpy( &m_pAudioBuffer[m_nAudioBufferWriteOffset], m_pcm, nBytesRead );
+			m_nAudioBufferWriteOffset += nBytesRead;
+
+			if( m_nAudioBufferWriteOffset == m_nAudioBufferSize )
+			{
+				m_nAudioBufferWriteOffset = 0;
+				memcpy( m_pAudioBuffer, &m_pcm[nPCMOverflowOffset], nPCMOverflowSize );
+				m_nAudioBufferWriteOffset += nPCMOverflowSize;
+			}
+
+			// if our timer is waaaaayyy ahead of the audio time set it back
+			//if ( m_curTime > m_audioFrame->time )
+			//{
+			//	m_curTime = m_videoTime;
+			//}
+
+
+			//int bytesRead = numOutSamples * m_nBytesPerSample;
+			//if(bytesRead > 0)
+			//{
+			//	// THIS IS EASILY OVERRUN. BUT WORKS FOR NOW
+			//	if( (nAudioBufferWriteOffset + bytesRead) >= m_nAudioBufferSize )
+			//	{
+			//		int numBytesToEnd = m_nAudioBufferSize - nAudioBufferWriteOffset;
+			//		memcpy( pAudioBuffer + nAudioBufferWriteOffset, m_pcm, numBytesToEnd );
+			//		bytesRead -= numBytesToEnd;
+			//		nAudioBufferWriteOffset = 0;
+			//	}
+			//		
+			//	// copy sample to buffer
+			//	memcpy( pAudioBuffer + nAudioBufferWriteOffset, m_pcm, bytesRead );
+			//	nAudioBufferWriteOffset += bytesRead;
+			//}
+
+
+		}
+	#ifdef _WIN32
+		if ( m_audioFrame->isValid() )
 			{
 				char *pcm = nullptr;
 				if ( !m_pcmOverflow )
@@ -789,33 +778,10 @@ bool CVideoMaterial::Update()
 			m_directSoundBuffer->Unlock( lpvAudioPtr1, dwAudioBytes1, lpvAudioPtr2, dwAudioBytes2 );
 
 		}
-#elif _LINUX
-		if ( m_audioFrame->isValid() )
-		{
-			int numOutSamples = 0;
-			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
-
-			int bytesRead = numOutSamples * m_nBytesPerSample;
-			if(bytesRead > 0)
-			{
-				// THIS IS EASILY OVERRUN. BUT WORKS FOR NOW
-				if( (m_nAudioBufferWriteOffset + bytesRead) >= m_nAudioBufferSize )
-				{
-					int numBytesToEnd = m_nAudioBufferSize - m_nAudioBufferWriteOffset;
-					memcpy( m_pAudioBuffer + m_nAudioBufferWriteOffset, m_pcm, numBytesToEnd );
-					bytesRead -= numBytesToEnd;
-					m_nAudioBufferWriteOffset = 0;
-				}
-					
-				// copy sample to buffer
-				memcpy( m_pAudioBuffer + m_nAudioBufferWriteOffset, m_pcm, bytesRead );
-				m_nAudioBufferWriteOffset += bytesRead;
-			}
-		}
-#endif
+	#endif
 
 		// if we don't need to copy audio on the other half read a new frame
-		if ( m_pcmOverflow == 0 )
+		if ( nPCMOverflowSize == 0 )
 		{
 			WebMFrame *video_frame = new WebMFrame();
 			// did we reach the EOS
@@ -831,6 +797,7 @@ bool CVideoMaterial::Update()
 			else
 				m_vecVideoFrames.AddToTail( video_frame );
 		}
+		nPCMOverflowSize = nPCMOverflowOffset = 0;
 	}
 
 	// roll back for videos with no audio
@@ -874,15 +841,6 @@ bool CVideoMaterial::Update()
 	}
 
 	return true;
-}
-
-void CVideoMaterial::MixSDLSoundBuffer( Uint8 *stream, int len )
-{
-	if ( !m_audioDecoder->isOpen() )
-		return;
-
-	SDL_MixAudioFormat( stream, &m_pAudioBuffer[m_nAudioBufferOffset], m_nFormat, len, 64 );
-	m_nAudioBufferOffset = (m_nAudioBufferOffset + len) % m_nAudioBufferSize;
 }
 
 // Material / Texture Info functions
@@ -947,14 +905,14 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	if ( operation == VideoSoundDeviceOperation_t::SET_DIRECT_SOUND_DEVICE && pDevice )
 	{
 		// if we had a sound buffer before, kill it
-		if ( m_directSound )
+		if ( m_pSoundDevice )
 		{
 			m_soundKilled = true;
 			DestroySoundBuffer();
 			m_soundKilled = false;
 		}
 
-		m_directSound = (IDirectSound8 *)pDevice;
+		m_pSoundDevice = (IDirectSound8 *)pDevice;
 		CreateSoundBuffer();
 		return VideoResult_t::SUCCESS;
 	}
@@ -962,17 +920,28 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	// Maybe called when changing audio device?
 	if( operation == VideoSoundDeviceOperation_t::SET_SDL_SOUND_DEVICE )
 	{
-		ConMsg("\nSDL Sound Device Set\n\n");
 	}
 	// Called on start up and sound restart
 	else if( operation == VideoSoundDeviceOperation_t::SET_SDL_PARAMS )
 	{
-		SDL_AudioSpec *pSpec = (SDL_AudioSpec *)pData;
-		ConMsg("Freq: %d\nFormat: %d\nChannels: %d\nSilence: %d\nSamples: %d\nSize: %d\n", pSpec->freq, pSpec->format, pSpec->channels, pSpec->silence, pSpec->samples, pSpec->size);
+		// todo
 	}
 	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
 	{
-		MixSDLSoundBuffer( (Uint8 *)pDevice, *(int *)pData );
+		if ( !m_audioDecoder->isOpen() )
+			return VideoResult_t::SUCCESS;
+
+		int length = *(int *)pData;
+		Uint8 *stream = (Uint8 *)pDevice;
+		SDL_MixAudioFormat( stream, &m_pAudioBuffer[m_nAudioBufferReadOffset], m_pAudioDevice->format, length, 64 );
+		m_nAudioBufferReadOffset += length;
+
+		if( m_nAudioBufferReadOffset == m_nAudioBufferSize )
+		{
+			m_nAudioBufferReadOffset = 0;
+		}
+
+		return VideoResult_t::SUCCESS;
 	}
 #endif
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;

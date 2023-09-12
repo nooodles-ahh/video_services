@@ -147,18 +147,11 @@ public:
 	virtual void				GetVideoTexCoordRange( float *pMaxU, float *pMaxV );
 	virtual void				GetVideoImageSize( int *pWidth, int *pHeight );
 
-#ifdef _WIN32
-	void SetAudioBufferCopied( bool bSecondHalf, bool bCopied );
-	bool WasAudioBufferCopied(bool bSecondHalf );
-	static unsigned _HandleBufferEvents( void *params );
-#endif
-
 private:
 	bool NeedNewFrame( double timepassed );
 	bool CreateSoundBuffer(void *pSoundDevice = nullptr);
 	void DestroySoundBuffer();
 	void RestartVideo();
-	void MixSDLSoundBuffer( uint8_t *pBuffer, int sampleCount );
 
 private:
 
@@ -194,8 +187,8 @@ private:
 	char m_videoPath[MAX_PATH];
 
 	short *m_pcm;
-	int m_pcmOverflow;
-	int m_pcmOffset;
+	//int m_pcmOverflowSize;
+	//int m_pcmOverflowOffset;
 
 	float m_volume;
 	double m_curTime;
@@ -205,32 +198,18 @@ private:
 	unsigned int m_currentFrame;
 	CUtlVector< WebMFrame *> m_vecVideoFrames;
 	bool m_soundKilled;
-	
-	bool m_bufferCopiedFirst;
-	bool m_bufferCopiedSecond;
 
-#ifdef _WIN32
 	CThreadMutex	m_mutex;
-	ThreadHandle_t m_hTest;
 
-	IDirectSound8 *m_directSound;
-	LPDIRECTSOUNDNOTIFY m_directSoundNotify;
-	IDirectSoundBuffer *m_directSoundBuffer;
-	WAVEFORMATEX m_waveFormat;
-
-	HANDLE m_beginningEventHandle;
-	HANDLE m_halfwayEventHandle;
-	HANDLE m_bufferDestroyedEventHandle;
-#elif _LINUX
+	SDL_AudioSpec *m_pAudioDevice;
 	Uint8* m_pAudioBuffer = NULL;
-	int m_nAudioBufferOffset = 0;
-	int m_nAudioBufferWriteOffset = 0;
+
+	unsigned int m_nAudioBufferWriteOffset = 0;
+	unsigned int m_nAudioBufferReadOffset = 0;
+
 	int m_nAudioBufferSize = 0;
 	int m_nBytesPerSample = 0;
 	int m_nBytesPerSecond = 0;
-	int m_nFormat = 0;
-	int m_nFreq = 0;
-#endif
 };
 
 #endif

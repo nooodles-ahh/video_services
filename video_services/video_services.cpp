@@ -340,11 +340,8 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 
 		m_pSoundDevice = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
 		memcpy(m_pSoundDevice, pData, sizeof(SDL_AudioSpec));
-		ConMsg("Freq: %d\nFormat: %d\nChannels: %d\nSilence: %d\nSamples: %d\nSize: %d\n", 
-				m_pSoundDevice->freq, m_pSoundDevice->format, m_pSoundDevice->channels, m_pSoundDevice->silence, m_pSoundDevice->samples, m_pSoundDevice->size);
-	
 		FOR_EACH_VEC( m_vecVideos, vid )
-			m_vecVideos[vid]->SoundDeviceCommand( operation, pDevice, pData );
+			m_vecVideos[vid]->SoundDeviceCommand( operation, m_pSoundDevice, pData );
 	}
 	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
 	{
