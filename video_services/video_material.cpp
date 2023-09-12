@@ -21,10 +21,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define BUFFER_LENGTH_SECONDS 20
-#define BUFFER_FREQ 44100
-#define BUFFER_SIZE_BYTES 4
-#define BUFFER_SIZE 81920 * 5
+#define BUFFER_SIZE 81920 * 4
 
 //=============================================================================
 // 
@@ -102,6 +99,13 @@ CVideoMaterial::CVideoMaterial()
 	m_cbTextureRegen = nullptr;
 
 	m_pAudioDevice = nullptr;
+
+	m_nAudioBufferWriteOffset = 0;
+	m_nAudioBufferReadOffset = 0;
+
+	m_nAudioBufferSize = 0;
+	m_nBytesPerSample = 0;
+	m_nBytesPerSecond = 0;
 
 #ifdef _WIN32
 	m_beginningEventHandle = NULL;
@@ -678,13 +682,31 @@ bool CVideoMaterial::Update()
 	}
 
 	// Read until we've filled the buffer or got enough frames
-	while ( NeedNewFrame( m_curTime ) )
+	while ( NeedNewFrame( m_curTime ) || bUpdateBuffer)
 	{
+		WebMFrame *video_frame = new WebMFrame();
+		// did we reach the EOS
+		if ( !m_demuxer->readFrame( video_frame, m_audioFrame ) )
+		{
+			bUpdateBuffer = false;
+			delete video_frame;
+			break;
+		}
+		else if ( !video_frame->isValid() )
+		{
+			delete video_frame;
+		}
+		else
+			m_vecVideoFrames.AddToTail( video_frame );
+
+
 		int nPCMOverflowSize = 0;
 		int nPCMOverflowOffset = 0;
 
 		if ( m_audioFrame->isValid() )
 		{
+			bUpdateBuffer = false;
+
 			int nBytesRead = 0;
 			int numOutSamples = 0;
 			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
@@ -695,45 +717,26 @@ bool CVideoMaterial::Update()
 			{
 				// save amount gone over
 				nPCMOverflowSize = (m_nAudioBufferWriteOffset + nBytesRead) - m_nAudioBufferSize;
-				nPCMOverflowOffset = numOutSamples - ( nPCMOverflowSize / m_nBytesPerSample);
+				nPCMOverflowOffset = nBytesRead - nPCMOverflowSize;
 				nBytesRead -= nPCMOverflowSize;
+				bUpdateBuffer = true;
 			}
 
-			memcpy( &m_pAudioBuffer[m_nAudioBufferWriteOffset], m_pcm, nBytesRead );
+			memcpy( m_pAudioBuffer + m_nAudioBufferWriteOffset, m_pcm, nBytesRead );
 			m_nAudioBufferWriteOffset += nBytesRead;
 
 			if( m_nAudioBufferWriteOffset == m_nAudioBufferSize )
 			{
 				m_nAudioBufferWriteOffset = 0;
-				memcpy( m_pAudioBuffer, &m_pcm[nPCMOverflowOffset], nPCMOverflowSize );
+				memcpy( &m_pAudioBuffer[0], (char *)(m_pcm) + nPCMOverflowOffset, nPCMOverflowSize );
 				m_nAudioBufferWriteOffset += nPCMOverflowSize;
 			}
 
 			// if our timer is waaaaayyy ahead of the audio time set it back
-			//if ( m_curTime > m_audioFrame->time )
-			//{
-			//	m_curTime = m_videoTime;
-			//}
-
-
-			//int bytesRead = numOutSamples * m_nBytesPerSample;
-			//if(bytesRead > 0)
-			//{
-			//	// THIS IS EASILY OVERRUN. BUT WORKS FOR NOW
-			//	if( (nAudioBufferWriteOffset + bytesRead) >= m_nAudioBufferSize )
-			//	{
-			//		int numBytesToEnd = m_nAudioBufferSize - nAudioBufferWriteOffset;
-			//		memcpy( pAudioBuffer + nAudioBufferWriteOffset, m_pcm, numBytesToEnd );
-			//		bytesRead -= numBytesToEnd;
-			//		nAudioBufferWriteOffset = 0;
-			//	}
-			//		
-			//	// copy sample to buffer
-			//	memcpy( pAudioBuffer + nAudioBufferWriteOffset, m_pcm, bytesRead );
-			//	nAudioBufferWriteOffset += bytesRead;
-			//}
-
-
+			if ( m_curTime > m_audioFrame->time )
+			{
+				m_curTime = m_videoTime;
+			}
 		}
 	#ifdef _WIN32
 		if ( m_audioFrame->isValid() )
@@ -779,25 +782,6 @@ bool CVideoMaterial::Update()
 
 		}
 	#endif
-
-		// if we don't need to copy audio on the other half read a new frame
-		if ( nPCMOverflowSize == 0 )
-		{
-			WebMFrame *video_frame = new WebMFrame();
-			// did we reach the EOS
-			if ( !m_demuxer->readFrame( video_frame, m_audioFrame ) )
-			{
-				delete video_frame;
-				break;
-			}
-			else if ( !video_frame->isValid() )
-			{
-				delete video_frame;
-			}
-			else
-				m_vecVideoFrames.AddToTail( video_frame );
-		}
-		nPCMOverflowSize = nPCMOverflowOffset = 0;
 	}
 
 	// roll back for videos with no audio
@@ -929,6 +913,9 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
 	{
 		if ( !m_audioDecoder->isOpen() )
+			return VideoResult_t::SUCCESS;
+
+		if( !m_videoStarted )
 			return VideoResult_t::SUCCESS;
 
 		int length = *(int *)pData;

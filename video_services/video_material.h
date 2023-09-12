@@ -199,17 +199,15 @@ private:
 	CUtlVector< WebMFrame *> m_vecVideoFrames;
 	bool m_soundKilled;
 
-	CThreadMutex	m_mutex;
-
 	SDL_AudioSpec *m_pAudioDevice;
 	Uint8* m_pAudioBuffer = NULL;
 
-	unsigned int m_nAudioBufferWriteOffset = 0;
-	unsigned int m_nAudioBufferReadOffset = 0;
+	unsigned int m_nAudioBufferWriteOffset;
+	unsigned int m_nAudioBufferReadOffset;
 
-	int m_nAudioBufferSize = 0;
-	int m_nBytesPerSample = 0;
-	int m_nBytesPerSecond = 0;
+	int m_nAudioBufferSize;
+	int m_nBytesPerSample;
+	int m_nBytesPerSecond;
 };
 
 #endif
