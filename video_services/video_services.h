@@ -10,6 +10,8 @@
 #ifdef _WIN32
 #include <Windows.h>
 #include "dsound.h"
+#elif _LINUX
+#include "SDL2/SDL_audio.h"
 #endif
 
 //---------------------------------------------------------
@@ -95,6 +97,8 @@ private:
 	CUtlVector< IVideoMaterial *> m_vecVideos;
 #ifdef _WIN32
 	IDirectSound8 *m_pSoundDevice;
+#elif _LINUX
+	SDL_AudioSpec *m_pSoundDevice;
 #else
 	void *m_pSoundDevice;
 #endif

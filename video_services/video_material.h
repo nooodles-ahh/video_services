@@ -16,6 +16,8 @@
 #ifdef _WIN32
 #include <Windows.h>
 #include "dsound.h"
+#elif _LINUX
+#include "SDL2/SDL_audio.h"
 #endif
 
 class MkvReader : public mkvparser::IMkvReader
@@ -153,7 +155,7 @@ public:
 
 private:
 	bool NeedNewFrame( double timepassed );
-	bool CreateSoundBuffer();
+	bool CreateSoundBuffer(void *pSoundDevice = nullptr);
 	void DestroySoundBuffer();
 	void RestartVideo();
 	void MixSDLSoundBuffer( uint8_t *pBuffer, int sampleCount );
@@ -192,7 +194,6 @@ private:
 	char m_videoPath[MAX_PATH];
 
 	short *m_pcm;
-	short *m_pcmTemp;
 	int m_pcmOverflow;
 	int m_pcmOffset;
 
@@ -220,6 +221,15 @@ private:
 	HANDLE m_beginningEventHandle;
 	HANDLE m_halfwayEventHandle;
 	HANDLE m_bufferDestroyedEventHandle;
+#elif _LINUX
+	Uint8* m_pAudioBuffer = NULL;
+	int m_nAudioBufferOffset = 0;
+	int m_nAudioBufferWriteOffset = 0;
+	int m_nAudioBufferSize = 0;
+	int m_nBytesPerSample = 0;
+	int m_nBytesPerSecond = 0;
+	int m_nFormat = 0;
+	int m_nFreq = 0;
 #endif
 };
 

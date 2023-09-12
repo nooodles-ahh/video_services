@@ -21,8 +21,9 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 15360
 #define BUFFER_HALF_SIZE BUFFER_SIZE * 0.5
+#define BUFFER_LENGTH_SECONDS 4
 
 //=============================================================================
 // 
@@ -165,7 +166,6 @@ CVideoMaterial::~CVideoMaterial()
 #endif
 
 	delete m_pcm;
-	delete m_pcmTemp;
 	delete m_image;
 	delete m_audioDecoder;
 	delete m_videoDecoder;
@@ -198,7 +198,6 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_videoDecoder = new VPXDecoder( *m_demuxer, 4 );
 	m_audioDecoder = new OpusVorbisDecoder( *m_demuxer );
 	m_pcm = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
-	m_pcmTemp = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
 	m_videoWidth = m_demuxer->getWidth();
 	m_videoHeight = m_demuxer->getHeight();
 	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); // This is a guessed framerate from the first 50 frames
@@ -207,8 +206,8 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	{
 #ifdef WIN32
 		m_directSound = (IDirectSound8 *)pSoundDevice;
-		CreateSoundBuffer();
 #endif
+		CreateSoundBuffer(pSoundDevice);
 	}
 
 	// ---------------------------
@@ -412,12 +411,35 @@ unsigned CVideoMaterial::_HandleBufferEvents( void *params )
 }
 #endif
 
-bool CVideoMaterial::CreateSoundBuffer()
+bool CVideoMaterial::CreateSoundBuffer(void *pSoundDevice)
 {
 	if ( !m_audioDecoder->isOpen() )
 		return false;
 
-#ifdef _WIN32
+	if( !pSoundDevice )
+	{
+		ConMsg("No sound device!\n");
+		return false;
+	}
+
+#ifdef _LINUX
+	SDL_AudioSpec *pSpec = (SDL_AudioSpec*)pSoundDevice;
+	//Calculate per sample bytes
+	m_nFormat = pSpec->format;
+	m_nBytesPerSample = pSpec->channels * ( SDL_AUDIO_BITSIZE( pSpec->format ) / 8 );
+	//Calculate bytes per second
+	m_nFreq= pSpec->freq;
+	m_nBytesPerSecond = pSpec->freq * m_nBytesPerSample;
+
+	//Calculate buffer size
+	m_nAudioBufferSize = BUFFER_LENGTH_SECONDS * m_nBytesPerSecond;
+
+	//Allocate and initialize byte buffer
+	m_pAudioBuffer = new Uint8[ m_nAudioBufferSize ];
+	memset( m_pAudioBuffer, 0, m_nAudioBufferSize );
+
+	return true;
+#elif _WIN32
 	if ( !m_directSound )
 		return false;
 
@@ -654,10 +676,10 @@ bool CVideoMaterial::Update()
 	m_curTime += ( curTicks - m_prevTicks ) / 1000.0;
 	m_prevTicks = curTicks;
 
-	if ( m_curTime < m_videoTime )
-	{
-		return true;
-	}
+	//if ( m_curTime < m_videoTime )
+	//{
+	//	return true;
+	//}
 
 	// Has the stream ended?
 	if ( m_demuxer->isEOS() )
@@ -704,7 +726,7 @@ bool CVideoMaterial::Update()
 #endif
 
 	// Read until we've filled the buffer or got enough frames
-	while ( ( NeedNewFrame( m_curTime ) ) 
+	while ( ( NeedNewFrame( m_curTime ) || bUpdateBuffer ) 
 #ifdef _WIN32
 		|| ( bUpdateBuffer && numBytesRead < BUFFER_HALF_SIZE ) 
 #endif
@@ -771,19 +793,24 @@ bool CVideoMaterial::Update()
 		if ( m_audioFrame->isValid() )
 		{
 			int numOutSamples = 0;
-			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcmTemp, numOutSamples );
-			if( m_pcmOffset + numOutSamples > 4096 )
+			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
+
+			int bytesRead = numOutSamples * m_nBytesPerSample;
+			if(bytesRead > 0)
 			{
-				memcpy( m_pcm + m_pcmOffset, m_pcmTemp, (4096 - m_pcmOffset) * sizeof( short ) );
-				m_pcmOffset = 4096;
+				// THIS IS EASILY OVERRUN. BUT WORKS FOR NOW
+				if( (m_nAudioBufferWriteOffset + bytesRead) >= m_nAudioBufferSize )
+				{
+					int numBytesToEnd = m_nAudioBufferSize - m_nAudioBufferWriteOffset;
+					memcpy( m_pAudioBuffer + m_nAudioBufferWriteOffset, m_pcm, numBytesToEnd );
+					bytesRead -= numBytesToEnd;
+					m_nAudioBufferWriteOffset = 0;
+				}
+					
+				// copy sample to buffer
+				memcpy( m_pAudioBuffer + m_nAudioBufferWriteOffset, m_pcm, bytesRead );
+				m_nAudioBufferWriteOffset += bytesRead;
 			}
-			else
-			{
-				memcpy( m_pcm + m_pcmOffset, m_pcmTemp, numOutSamples * sizeof( short ) );
-				m_pcmOffset += numOutSamples;
-			}
-			
-			
 		}
 #endif
 
@@ -853,12 +880,9 @@ void CVideoMaterial::MixSDLSoundBuffer( Uint8 *stream, int len )
 {
 	if ( !m_audioDecoder->isOpen() )
 		return;
-	
-	SDL_MixAudioFormat( stream, (Uint8*)m_pcm, AUDIO_S16LSB, min(len, m_pcmOffset), SDL_MIX_MAXVOLUME );
-	if(m_pcmOffset >= 4096)
-	{
-		m_pcmOffset = 0;
-	}
+
+	SDL_MixAudioFormat( stream, &m_pAudioBuffer[m_nAudioBufferOffset], m_nFormat, len, 64 );
+	m_nAudioBufferOffset = (m_nAudioBufferOffset + len) % m_nAudioBufferSize;
 }
 
 // Material / Texture Info functions

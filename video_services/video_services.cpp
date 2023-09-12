@@ -233,8 +233,8 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 	{
 #ifdef _WIN32
 		m_pSoundDevice->Release();
-#endif
 		m_pSoundDevice = nullptr;
+#endif
 		return VideoResult_t::VIDEO_FILE_NOT_FOUND;
 	}
 
@@ -335,6 +335,14 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	// Called on start up and sound restart
 	else if( operation == VideoSoundDeviceOperation_t::SET_SDL_PARAMS )
 	{
+		if( m_pSoundDevice )
+			free(m_pSoundDevice);
+
+		m_pSoundDevice = (SDL_AudioSpec*)malloc(sizeof(SDL_AudioSpec));
+		memcpy(m_pSoundDevice, pData, sizeof(SDL_AudioSpec));
+		ConMsg("Freq: %d\nFormat: %d\nChannels: %d\nSilence: %d\nSamples: %d\nSize: %d\n", 
+				m_pSoundDevice->freq, m_pSoundDevice->format, m_pSoundDevice->channels, m_pSoundDevice->silence, m_pSoundDevice->samples, m_pSoundDevice->size);
+	
 		FOR_EACH_VEC( m_vecVideos, vid )
 			m_vecVideos[vid]->SoundDeviceCommand( operation, pDevice, pData );
 	}
