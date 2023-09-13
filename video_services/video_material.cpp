@@ -668,16 +668,15 @@ bool CVideoMaterial::Update()
 		else
 			m_videoFrames.Insert( video_frame );
 
-
-		int nPCMOverflowSize = 0;
-		int nPCMOverflowOffset = 0;
-
 		if ( m_audioFrame->isValid() && m_pAudioBuffer )
 		{
-			bUpdateBuffer = m_nAudioBufferWritten <= BUFFER_FILLED_MIN && !m_demuxer->isEOS();
-
 			int nBytesRead = 0;
 			int numOutSamples = 0;
+			int nPCMOverflowSize = 0;
+			int nPCMOverflowOffset = 0;
+
+			bUpdateBuffer = m_nAudioBufferWritten <= BUFFER_FILLED_MIN && !m_demuxer->isEOS();
+			
 			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
 			if ( numOutSamples == 0 )
 				continue;
