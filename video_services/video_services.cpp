@@ -329,8 +329,8 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 
 #ifdef _WIN32
 	m_pSoundDevice->Release();
-#endif
 	m_pSoundDevice = nullptr;
+#endif
 	return VideoResult_t::SUCCESS;
 }
 

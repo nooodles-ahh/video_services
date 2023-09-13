@@ -25,8 +25,8 @@
 // about a second
 #define BUFFER_SIZE 196608
 
-// at minimim accomdates about 10fps
 #define BUFFER_FILLED_MIN_THREAD 4096
+// at minimim accomdate about an update every 125ms
 #define BUFFER_FILLED_MIN 4096 * 8
 
 //=============================================================================
@@ -607,7 +607,12 @@ bool CVideoMaterial::Update()
 
 	if ( m_curTime < m_videoTime )
 	{
-		if( m_pAudioBuffer && m_nAudioBufferWritten > BUFFER_FILLED_MIN )
+		if( m_pAudioBuffer )
+		{
+			if( m_nAudioBufferWritten > BUFFER_FILLED_MIN )
+				return true;
+		}
+		else
 			return true;
 	}
 
@@ -680,7 +685,7 @@ bool CVideoMaterial::Update()
 			nBytesRead = numOutSamples * m_nBytesPerSample;
 			m_nAudioBufferWritten += nBytesRead;
 
-			// if the current number of samples is larger than what we can fit save it for the next half
+			// can't fit the whole thing at the end so it needs to be split
 			if ( ( m_nAudioBufferWriteOffset + nBytesRead ) >= m_nAudioBufferSize )
 			{
 				// save amount gone over
