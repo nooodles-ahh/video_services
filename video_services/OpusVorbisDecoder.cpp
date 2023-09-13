@@ -87,7 +87,8 @@ bool OpusVorbisDecoder::getPCMS16(WebMFrame &frame, short *buffer, int &numOutSa
 		const int maxSamples = getBufferSamples();
 		int samplesCount, count = 0;
 		float **pcm;
-		while ((samplesCount = vorbis_synthesis_pcmout(&m_vorbis->dspState, &pcm)))
+		samplesCount = vorbis_synthesis_pcmout( &m_vorbis->dspState, &pcm );
+		while ( samplesCount )
 		{
 			const int toConvert = samplesCount <= maxSamples ? samplesCount : maxSamples;
 			for (int c = 0; c < m_channels; ++c)
@@ -95,7 +96,7 @@ bool OpusVorbisDecoder::getPCMS16(WebMFrame &frame, short *buffer, int &numOutSa
 				float *samples = pcm[c];
 				for (int i = 0, j = c; i < toConvert; ++i, j += m_channels)
 				{
-					int sample = samples[i] * 32767.0f;
+					int sample = (int)(samples[i] * 32767.0f);
 					if (sample > 32767)
 						sample = 32767;
 					else if (sample < -32768)
@@ -105,6 +106,8 @@ bool OpusVorbisDecoder::getPCMS16(WebMFrame &frame, short *buffer, int &numOutSa
 			}
 			vorbis_synthesis_read(&m_vorbis->dspState, toConvert);
 			count += toConvert;
+
+			samplesCount = vorbis_synthesis_pcmout( &m_vorbis->dspState, &pcm );
 		}
 
 		numOutSamples = count;

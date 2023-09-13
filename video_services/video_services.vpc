@@ -32,7 +32,7 @@ $Project "Video Services"
 {
 	$Folder	"Source Files"
 	{
-		-$File	"$SRCDIR\public\tier0\memoverride.cpp"
+		//-$File	"$SRCDIR\public\tier0\memoverride.cpp"
 		$File	"video_services.cpp"
 		$File	"video_material.cpp"
 		$File	"OpusVorbisDecoder.cpp"
@@ -42,6 +42,16 @@ $Project "Video Services"
 	
 	$Folder	"Header Files"
 	{
+		$File	"$SRCDIR\public\materialsystem\MaterialSystemUtil.cpp"
+		{
+			$Configuration
+			{
+				$Compiler
+				{
+					$Create/UsePrecompiledHeader	"Not Using Precompiled Headers"
+				}
+			}
+		}
 		$File	"$SRCDIR\public\video\ivideoservices.h"
 		$File	"video_services.h"
 		$File	"video_material.h"

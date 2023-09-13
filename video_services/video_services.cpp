@@ -233,8 +233,7 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 	VideoSystem_t videoSystem, bool PlayAlternateIfNotAvailable )
 {
 #ifdef _WIN32
-	HRESULT result = DirectSoundCreate8( NULL, &m_pSoundDevice, NULL );
-	if ( result != DS_OK )
+	if ( FAILED( DirectSoundCreate8( NULL, &m_pSoundDevice, NULL ) ) )
 		return VideoResult_t::AUDIO_ERROR_OCCURED;
 
 	m_pSoundDevice->SetCooperativeLevel( (HWND)mainWindow, DSSCL_PRIORITY );

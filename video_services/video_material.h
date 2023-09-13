@@ -12,6 +12,7 @@
 #include "VPXDecoder.hpp"
 #include <mkvparser/mkvparser.h>
 #include <sys/types.h>
+#include "tier1/utlqueue.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -196,7 +197,7 @@ private:
 
 	unsigned int m_prevTicks;
 	unsigned int m_currentFrame;
-	CUtlVector< WebMFrame *> m_vecVideoFrames;
+	CUtlQueue< WebMFrame *> m_videoFrames;
 	bool m_soundKilled;
 
 	SDL_AudioSpec *m_pAudioDevice;
