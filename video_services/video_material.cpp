@@ -106,6 +106,7 @@ CVideoMaterial::CVideoMaterial()
 	m_nAudioBufferSize = 0;
 	m_nBytesPerSample = 0;
 	m_nBytesPerSecond = 0;
+	m_nAudioBufferWritten = 0;
 
 #ifdef _WIN32
 	m_beginningEventHandle = NULL;
@@ -641,10 +642,10 @@ bool CVideoMaterial::Update()
 	m_curTime += ( curTicks - m_prevTicks ) / 1000.0;
 	m_prevTicks = curTicks;
 
-	//if ( m_curTime < m_videoTime )
-	//{
-	//	return true;
-	//}
+	if ( m_curTime < m_videoTime && m_nAudioBufferWritten > m_pAudioDevice->size )
+	{
+		return true;
+	}
 
 	// Has the stream ended?
 	if ( m_demuxer->isEOS() )
@@ -671,18 +672,11 @@ bool CVideoMaterial::Update()
 		}
 	}
 
-	bool bHasAudio = HasAudio();
-	bool bUpdateBuffer = false;
 	// if we have audio check if we should update the buffer and make sure we're playing
-	if(bHasAudio)
-	{
-#ifdef _WIN32
-		IDirectSoundBuffer_Play( m_directSoundBuffer, 0, 0, DSBPLAY_LOOPING );
-#endif
-	}
+	bool bUpdateBuffer = false;
 
 	// Read until we've filled the buffer or got enough frames
-	while ( NeedNewFrame( m_curTime ) || bUpdateBuffer)
+	while ( NeedNewFrame( m_curTime ) || bUpdateBuffer || m_nAudioBufferWritten <= m_pAudioDevice->size )
 	{
 		WebMFrame *video_frame = new WebMFrame();
 		// did we reach the EOS
@@ -711,6 +705,7 @@ bool CVideoMaterial::Update()
 			int numOutSamples = 0;
 			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
 			nBytesRead = numOutSamples * m_nBytesPerSample;
+			m_nAudioBufferWritten += nBytesRead;
 
 			// if the current number of samples is larger than what we can fit save it for the next half
 			if ( (m_nAudioBufferWriteOffset + nBytesRead) >= m_nAudioBufferSize )
@@ -738,50 +733,6 @@ bool CVideoMaterial::Update()
 				m_curTime = m_videoTime;
 			}
 		}
-	#ifdef _WIN32
-		if ( m_audioFrame->isValid() )
-			{
-				char *pcm = nullptr;
-				if ( !m_pcmOverflow )
-				{
-					// new frame get more PCM data as normal
-					m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
-					pcm = (char *)m_pcm;
-				}
-				else
-				{
-					// we have overflow from the previous frame so put it in the current half of the buffer
-					pcm = (char *)(m_pcm)+( m_pcmOffset * m_waveFormat.nBlockAlign );
-					numOutSamples = m_pcmOverflow;
-					m_pcmOverflow = 0;
-					m_pcmOffset = 0;
-				}
-
-				// if the current number of samples is larger than we can fit save it for the next half
-				if ( ( numBytesRead + numOutSamples ) > BUFFER_HALF_SIZE )
-				{
-					// save amount gone over
-					m_pcmOverflow = ( numBytesRead + numOutSamples ) - BUFFER_HALF_SIZE;
-					m_pcmOffset = numOutSamples - m_pcmOverflow;
-					numOutSamples -= m_pcmOverflow;
-				}
-				if ( lpvAudioPtr1 )
-					memcpy( (char *)(lpvAudioPtr1)+( numBytesRead * m_waveFormat.nBlockAlign ),
-						pcm, numOutSamples * m_waveFormat.nBlockAlign );
-
-				numBytesRead += numOutSamples;
-
-				// if our timer is waaaaayyy ahead of the audio time set it back
-				if ( m_curTime > m_audioFrame->time )
-				{
-					m_curTime = m_videoTime;
-				}
-			}
-
-			m_directSoundBuffer->Unlock( lpvAudioPtr1, dwAudioBytes1, lpvAudioPtr2, dwAudioBytes2 );
-
-		}
-	#endif
 	}
 
 	// roll back for videos with no audio
@@ -823,7 +774,7 @@ bool CVideoMaterial::Update()
 
 		m_vecVideoFrames.Remove( 0 );
 	}
-
+	
 	return true;
 }
 
@@ -922,6 +873,7 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 		Uint8 *stream = (Uint8 *)pDevice;
 		SDL_MixAudioFormat( stream, &m_pAudioBuffer[m_nAudioBufferReadOffset], m_pAudioDevice->format, length, 64 );
 		m_nAudioBufferReadOffset += length;
+		m_nAudioBufferWritten -= length;
 
 		if( m_nAudioBufferReadOffset == m_nAudioBufferSize )
 		{

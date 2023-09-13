@@ -204,6 +204,7 @@ private:
 
 	unsigned int m_nAudioBufferWriteOffset;
 	unsigned int m_nAudioBufferReadOffset;
+	int m_nAudioBufferWritten;
 
 	int m_nAudioBufferSize;
 	int m_nBytesPerSample;
