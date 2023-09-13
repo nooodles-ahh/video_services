@@ -11,6 +11,9 @@
 #include "filesystem.h"
 #include "tier2/tier2.h"
 #include "tier3/tier3.h"
+#ifdef _LINUX
+#include "appframework/ilaunchermgr.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -18,6 +21,10 @@
 CVideoServices g_pVideoServices;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CVideoServices, CVideoServices,
 	VIDEO_SERVICES_INTERFACE_VERSION, g_pVideoServices );
+
+#ifdef _LINUX
+ILauncherMgr *g_pLauncherMgr = nullptr;
+#endif
 
 // --------------------------------------------------------------------
 // construction/destruction
@@ -42,6 +49,12 @@ bool CVideoServices::Connect( CreateInterfaceFn factory )
 
 	if ( !BaseClass::Connect( factory ) )
 		return false;
+		
+#ifdef _LINUX
+	g_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL );
+	if( !g_pLauncherMgr )
+		return false;
+#endif
 
 	return true;
 }
@@ -282,6 +295,18 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 		}
 
 		if ( GetAsyncKeyState( VK_ESCAPE ) < 0 || GetAsyncKeyState( VK_SPACE ) < 0 || GetAsyncKeyState( VK_RETURN ) < 0 )
+			break;
+
+#elif _LINUX
+		g_pLauncherMgr->PumpWindowsMessageLoop(); //0x38 on OSX
+
+		// keyboard events
+		bool bEsc, bReturn, bSpace;
+		bSpace = false; // only space isn't initialised?
+
+		// I can't believe that someone made a function JUST to get these keys
+		g_pLauncherMgr->PeekAndRemoveKeyboardEvents( &bEsc, &bReturn, &bSpace );
+		if( bEsc || bReturn || bSpace )
 			break;
 #endif
 

@@ -20,9 +20,7 @@
 class CVideoServices : public CTier3AppSystem< IVideoServices >
 {
 	typedef CTier3AppSystem< IVideoServices > BaseClass;
-
 public:
-
 	CVideoServices();
 	~CVideoServices();
 

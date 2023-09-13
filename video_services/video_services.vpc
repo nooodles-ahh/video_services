@@ -10,12 +10,14 @@ $Macro OUTBINDIR	"$SRCDIR\..\game\bin"
 $Macro LIBVIDEO	"..\lib$PLATSUBDIR"
 
 $Include "$SRCDIR\vpc_scripts\source_dll_base.vpc"
+$Include "$SRCDIR\vpc_scripts\source_video_base.vpc"
 
 $Configuration
 {
 	$Compiler
 	{
 		$AdditionalIncludeDirectories		"$BASE;$SRCDIR\video_services\includes\;$SRCDIR\video_services\includes\libwebm;$SRCDIR\video_services\includes\dx9sdk\"
+		$AdditionalIncludeDirectories		"$BASE;$SRCDIR\video_services\includes\SDL2\" [$SDL]
 		$PreprocessorDefinitions			"$BASE;MPI;PROTECTED_THINGS_DISABLE"
 		$TreatWarningsAsErrors				"No (/WX-)"
 	}
