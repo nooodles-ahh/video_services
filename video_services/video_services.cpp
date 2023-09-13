@@ -350,7 +350,6 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 		return VideoResult_t::SUCCESS;
 	}
 #elif _LINUX
-
 	// Maybe called when changing audio device?
 	if( operation == VideoSoundDeviceOperation_t::SET_SDL_SOUND_DEVICE )
 	{

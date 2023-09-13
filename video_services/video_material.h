@@ -148,6 +148,10 @@ public:
 	virtual void				GetVideoTexCoordRange( float *pMaxU, float *pMaxV );
 	virtual void				GetVideoImageSize( int *pWidth, int *pHeight );
 
+#ifdef _WIN32
+	static unsigned _HandleBufferUpdates( void* params );
+#endif
+
 private:
 	bool NeedNewFrame( double timepassed );
 	bool CreateSoundBuffer(void *pSoundDevice = nullptr);
@@ -187,29 +191,32 @@ private:
 
 	char m_videoPath[MAX_PATH];
 
-	short *m_pcm;
-	//int m_pcmOverflowSize;
-	//int m_pcmOverflowOffset;
-
 	float m_volume;
 	double m_curTime;
 	double m_videoTime;
 
 	unsigned int m_prevTicks;
 	unsigned int m_currentFrame;
-	CUtlQueue< WebMFrame *> m_videoFrames;
+	CUtlQueue< WebMFrame*> m_videoFrames;
+
+#ifdef _LINUX
+	SDL_AudioSpec* m_pAudioDevice;
+	Uint8* m_pAudioBuffer;
+#elif _WIN32
+	IDirectSound8* m_pAudioDevice;
+	IDirectSoundBuffer* m_pAudioBuffer;
+	CThreadMutex m_SoundBufferLock;
+	ThreadHandle_t m_hSoundBufferThreadHandle;
+#endif
+
 	bool m_soundKilled;
-
-	SDL_AudioSpec *m_pAudioDevice;
-	Uint8* m_pAudioBuffer = NULL;
-
-	unsigned int m_nAudioBufferWriteOffset;
-	unsigned int m_nAudioBufferReadOffset;
+	short* m_pcm;
+	int m_nAudioBufferWriteOffset;
+	int m_nAudioBufferReadOffset;
 	int m_nAudioBufferWritten;
 
 	int m_nAudioBufferSize;
 	int m_nBytesPerSample;
-	int m_nBytesPerSecond;
 };
 
 #endif
