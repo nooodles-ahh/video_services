@@ -17,6 +17,9 @@
 #ifdef _WIN32
 #include <Windows.h>
 #include "dsound.h"
+#elif _LINUX
+#include "SDL2/SDL.h"
+#include "SDL2/SDL_audio.h"
 #endif
 
 class MkvReader : public mkvparser::IMkvReader
@@ -147,14 +150,12 @@ public:
 	virtual void				GetVideoImageSize( int *pWidth, int *pHeight );
 
 #ifdef _WIN32
-	void SetAudioBufferCopied( bool bSecondHalf, bool bCopied );
-	bool WasAudioBufferCopied(bool bSecondHalf );
-	static unsigned _HandleBufferEvents( void *params );
+	static unsigned _HandleBufferUpdates( void* params );
 #endif
 
 private:
 	bool NeedNewFrame( double timepassed );
-	bool CreateSoundBuffer();
+	bool CreateSoundBuffer(void *pSoundDevice = nullptr);
 	void DestroySoundBuffer();
 	void RestartVideo();
 
@@ -191,35 +192,35 @@ private:
 
 	char m_videoPath[MAX_PATH];
 
-	short *m_pcm;
-	int m_pcmOverflow;
-	int m_pcmOffset;
-
 	float m_volume;
 	double m_curTime;
 	double m_videoTime;
 
 	unsigned int m_prevTicks;
 	unsigned int m_currentFrame;
-	CUtlQueue< WebMFrame *> m_videoFrames;
-	bool m_soundKilled;
-	
-	bool m_bufferCopiedFirst;
-	bool m_bufferCopiedSecond;
+	CUtlQueue< WebMFrame*> m_videoFrames;
 
-#ifdef _WIN32
-	CThreadMutex	m_mutex;
-	ThreadHandle_t m_hTest;
+#ifdef _LINUX
+	SDL_AudioSpec* m_pAudioDevice;
+	Uint8* m_pAudioBuffer;
 
-	IDirectSound8 *m_directSound;
-	LPDIRECTSOUNDNOTIFY m_directSoundNotify;
-	IDirectSoundBuffer *m_directSoundBuffer;
-	WAVEFORMATEX m_waveFormat;
+	SDL_AudioStream *m_pSDLAudioStream;
+#elif _WIN32
+	IDirectSound8* m_pAudioDevice;
+	IDirectSoundBuffer* m_pAudioBuffer;
 
-	HANDLE m_beginningEventHandle;
-	HANDLE m_halfwayEventHandle;
-	HANDLE m_bufferDestroyedEventHandle;
+	CThreadMutex m_SoundBufferLock;
+	ThreadHandle_t m_hSoundBufferThreadHandle;
 #endif
+
+	bool m_soundKilled;
+	short* m_pcm;
+	int m_nAudioBufferWriteOffset;
+	int m_nAudioBufferReadOffset;
+	int m_nAudioBufferFilledSize;
+
+	int m_nAudioBufferSize;
+	int m_nBytesPerSample;
 };
 
 #endif

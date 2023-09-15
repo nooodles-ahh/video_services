@@ -11,6 +11,9 @@
 #include "filesystem.h"
 #include "tier2/tier2.h"
 #include "tier3/tier3.h"
+#ifdef _LINUX
+#include "appframework/ilaunchermgr.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -19,13 +22,17 @@ CVideoServices g_pVideoServices;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CVideoServices, CVideoServices,
 	VIDEO_SERVICES_INTERFACE_VERSION, g_pVideoServices );
 
+#ifdef _LINUX
+ILauncherMgr *g_pLauncherMgr = nullptr;
+#endif
+
 // --------------------------------------------------------------------
 // construction/destruction
 // --------------------------------------------------------------------
 CVideoServices::CVideoServices()
 {
 	m_pSoundDevice = nullptr;
-	m_iUniqueID = 0;
+	m_iUniqueVideoID = 0;
 }
 
 CVideoServices::~CVideoServices()
@@ -42,6 +49,12 @@ bool CVideoServices::Connect( CreateInterfaceFn factory )
 
 	if ( !BaseClass::Connect( factory ) )
 		return false;
+		
+#ifdef _LINUX
+	g_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL );
+	if( !g_pLauncherMgr )
+		return false;
+#endif
 
 	return true;
 }
@@ -171,21 +184,19 @@ VideoResult_t CVideoServices::LocatePlayableVideoFile( const char *pSearchFileNa
 IVideoMaterial *CVideoServices::CreateVideoMaterial( const char *pMaterialName, const char *pVideoFileName, const char *pPathID,
 	VideoPlaybackFlags_t playbackFlags, VideoSystem_t videoSystem, bool PlayAlternateIfNotAvailable )
 {
-	char playable_video_file[MAX_PATH];
-	char file_name[MAX_PATH];
-	Q_strncpy( file_name, pVideoFileName, sizeof( file_name ) );
+	char sVideoPath[MAX_PATH];
+	char sVideoFilename[MAX_PATH];
+	Q_strncpy( sVideoFilename, pVideoFileName, sizeof( sVideoFilename ) );
+	// TODO; Allow mkv's?
 	// just look for a webm, there's nothing else.
-	Q_SetExtension( file_name, "webm", sizeof( file_name ) );
+	Q_SetExtension( sVideoFilename, "webm", sizeof( sVideoFilename ) );
 
 	// find playable file
-	VideoResult_t playable_file = LocatePlayableVideoFile( file_name, pPathID, nullptr,
-		playable_video_file, MAX_PATH );
-
-	if ( playable_file != VideoResult_t::SUCCESS )
+	if ( LocatePlayableVideoFile( sVideoFilename, pPathID, nullptr, sVideoPath, MAX_PATH ) != VideoResult_t::SUCCESS )
 		return nullptr;
 
 	CVideoMaterial *pMaterial = new CVideoMaterial();
-	if ( !pMaterial->LoadVideo( pMaterialName, playable_video_file, m_pSoundDevice ) )
+	if ( !pMaterial->LoadVideo( pMaterialName, sVideoPath, m_pSoundDevice ) )
 	{
 		delete pMaterial;
 		return nullptr;
@@ -211,15 +222,17 @@ VideoResult_t CVideoServices::DestroyVideoMaterial( IVideoMaterial *pVideoMateri
 // I don't know if this is ever called anywhere
 int	CVideoServices::GetUniqueMaterialID()
 {
-	return m_iUniqueID++;
+	return m_iUniqueVideoID++;
 }
 
 // Plays a given video file until it completes or the user presses ESC, SPACE, or ENTER
-VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, const char *pPathID, void *mainWindow, int windowWidth, int windowHeight, int desktopWidth, int desktopHeight, bool windowed, float forcedMinTime,
+VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, const char *pPathID, void *mainWindow, 
+	int windowWidth, int windowHeight, int desktopWidth, int desktopHeight, bool windowed, float forcedMinTime,
 	VideoPlaybackFlags_t playbackFlags,
 	VideoSystem_t videoSystem, bool PlayAlternateIfNotAvailable )
 {
 #ifdef _WIN32
+	// sound device on windows is either not created or not passed until somepoint later during start up
 	if ( FAILED( DirectSoundCreate8( NULL, &m_pSoundDevice, NULL ) ) )
 		return VideoResult_t::AUDIO_ERROR_OCCURED;
 
@@ -227,13 +240,14 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 #endif
 
 	// TODO - do this properly so it can return a proper error
-	CVideoMaterial *videoMaterial = (CVideoMaterial *)CreateVideoMaterial( "FullScreenVideo", pFileName, pPathID, playbackFlags, videoSystem, PlayAlternateIfNotAvailable );
+	CVideoMaterial *videoMaterial = (CVideoMaterial *)CreateVideoMaterial( "FullScreenVideo", pFileName, pPathID, playbackFlags, 
+																			videoSystem, PlayAlternateIfNotAvailable );
 	if ( !videoMaterial )
 	{
 #ifdef _WIN32
 		m_pSoundDevice->Release();
-#endif
 		m_pSoundDevice = nullptr;
+#endif
 		return VideoResult_t::VIDEO_FILE_NOT_FOUND;
 	}
 
@@ -268,7 +282,7 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 
 	CMatRenderContextPtr pRenderContext( materials );
 
-	bool prevThreadingState = materials->AllowThreading( false, 0 );
+	bool bMatsysThreading = materials->AllowThreading( false, 0 );
 
 	while ( 1 )
 	{
@@ -282,9 +296,21 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 
 		if ( GetAsyncKeyState( VK_ESCAPE ) < 0 || GetAsyncKeyState( VK_SPACE ) < 0 || GetAsyncKeyState( VK_RETURN ) < 0 )
 			break;
+
+#elif _LINUX
+		g_pLauncherMgr->PumpWindowsMessageLoop(); //0x38 on OSX
+
+		// keyboard events
+		bool bEsc, bReturn, bSpace;
+		bSpace = false; // only space isn't initialised?
+
+		// I can't believe that someone made a function JUST to get these keys
+		g_pLauncherMgr->PeekAndRemoveKeyboardEvents( &bEsc, &bReturn, &bSpace );
+		if( bEsc || bReturn || bSpace )
+			break;
 #endif
 
-		// offset x1 and y1 by -1 so you don't see any bleeding. I've probably messed up something somewhere
+		// offset x1 and y1 by -1 so you don't see any bleeding. I've probably messed up something for this to happen
 		pRenderContext->DrawScreenSpaceRectangle( videoMaterial->GetMaterial(), x, y, nPlaybackWidth, nPlaybackHeight, 0, 0,
 			nVideoWidth - 1, nVideoHeight - 1, nVideoWidth / flRightU, nVideoHeight / flBottomV );
 
@@ -295,17 +321,18 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 		materials->SwapBuffers();
 	}
 
-	materials->AllowThreading( prevThreadingState, 0 );
+	materials->AllowThreading( bMatsysThreading, 0 );
 
 	DestroyVideoMaterial( videoMaterial );
 
-	// clear so incase we have another video of a differing aspect ratio
+	// clear so incase we have another video of a differing aspect ratio lined up
 	pRenderContext->ClearBuffers( true, false, false );
 
 #ifdef _WIN32
+	// kill our temporary sound device
 	m_pSoundDevice->Release();
-#endif
 	m_pSoundDevice = nullptr;
+#endif
 	return VideoResult_t::SUCCESS;
 }
 
@@ -317,12 +344,39 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	{
 		m_pSoundDevice = (IDirectSound8 *)pDevice;
 
+		// update videos with the new sound device
 		FOR_EACH_VEC( m_vecVideos, vid )
 		{
 			m_vecVideos[vid]->SoundDeviceCommand( operation, m_pSoundDevice, pData );
 		}
 
 		return VideoResult_t::SUCCESS;
+	}
+#elif _LINUX
+	// TODO; Figure if/where this is called. Maybe called when changing audio device? Recording specific?
+	if( operation == VideoSoundDeviceOperation_t::SET_SDL_SOUND_DEVICE )
+	{
+		ConMsg("\nSDL Sound Device Set\n\n");
+	}
+	// Called on start up and sound restart
+	else if( operation == VideoSoundDeviceOperation_t::SET_SDL_PARAMS )
+	{
+		if( m_pSoundDevice )
+			delete m_pSoundDevice;
+
+		// need a copy of the SDL_AudioSpec
+		m_pSoundDevice = new SDL_AudioSpec();
+		Q_memcpy(m_pSoundDevice, pData, sizeof(SDL_AudioSpec));
+
+		// update videos with the new sound device
+		FOR_EACH_VEC( m_vecVideos, vid )
+			m_vecVideos[vid]->SoundDeviceCommand( operation, m_pSoundDevice, pData );
+	}
+	// Seemingly the SDL_AudioSpec callback without userdata
+	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
+	{
+		FOR_EACH_VEC( m_vecVideos, vid )
+			m_vecVideos[vid]->SoundDeviceCommand( operation, pDevice, pData );
 	}
 #endif
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;

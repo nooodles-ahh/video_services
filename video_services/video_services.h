@@ -10,6 +10,8 @@
 #ifdef _WIN32
 #include <Windows.h>
 #include "dsound.h"
+#elif _LINUX
+#include "SDL2/SDL_audio.h"
 #endif
 
 //---------------------------------------------------------
@@ -18,9 +20,7 @@
 class CVideoServices : public CTier3AppSystem< IVideoServices >
 {
 	typedef CTier3AppSystem< IVideoServices > BaseClass;
-
 public:
-
 	CVideoServices();
 	~CVideoServices();
 
@@ -90,11 +90,13 @@ public:
 	virtual const wchar_t *GetCodecName( VideoEncodeCodec_t nCodec );
 
 private:
-	int m_iUniqueID;
+	int m_iUniqueVideoID;
 
 	CUtlVector< IVideoMaterial *> m_vecVideos;
 #ifdef _WIN32
 	IDirectSound8 *m_pSoundDevice;
+#elif _LINUX
+	SDL_AudioSpec *m_pSoundDevice;
 #else
 	void *m_pSoundDevice;
 #endif

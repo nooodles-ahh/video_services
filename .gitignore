@@ -37,6 +37,12 @@
 Debug/
 Release/
 
+# Linux build product
+*.P
+*.map
+*_linux32.mak
+*_linux32.project
+
 # Visual Studio
 *.suo
 *.user

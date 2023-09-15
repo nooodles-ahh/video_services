@@ -4,7 +4,7 @@ A functional work in progress drop-in replacement for Source SDK 2013's video se
 This is intended for standalone Source engine mods released on Steam. This can be used for standard sourcemods but sound playback will not work out of the box, you can create a new DirectSound interface object on Windows, see the [PlayVideoFileFullScreen method](https://github.com/nooodles-ahh/video_services/blob/master/video_services/video_services.cpp#L222-L228) on how you might do that.
 
 # Rationale
-The version of Source provided to modders only has support for Bink which isn't well suited for HD video, and Quicktime video if you install the long since abandoned Quicktime player. There is also the issue of licensing as Bink is a proprietary codec, so despite it being provided with Source you're not actually allowed to use it in mods on Steam unless you acquire a license.
+The version of Source provided to modders on Windows and Linux only has support for Bink video playback, which isn't well suited for HD video. There is also the issue of licensing as Bink is a proprietary codec, so despite it being provided with Source you're not actually allowed to use it in mods on Steam unless you acquire a license.
 
 The primary reason for having written this is that at the time of writing I'm a developer for the infamous _game_ Hunt Down the Freeman. The game makes heavy use of cutscenes and as Bink was the only option, that's what was used. This resulted in about 6.6GB of video of accept quality, for an hour's worth of content. The same content encoded using VP9 and Opus only takes up a little over 900MB. So about 13%-16% of the original size for equal or, in most cases, better quality. The only instance of lower quality I noticed was in dark scenes, but that's likely due to the absurd bitrate initially used for the Bink versions.
 
@@ -33,9 +33,11 @@ The primary reason for having written this is that at the time of writing I'm a 
 	</tr>
 </table>
 
-Video playback works on both Linux and Windows, but only Windows has audio playback for the time being. I may support AV1 in the future as I have been asked about.
+I may support AV1 in the future as I have been asked about.
 
-I have no plans to support anything other than Linux and Windows but may indicentally become usable on other platforms as Linux audio playback makes use of SDL2.
+**Linux requires SDL 2.0.7 or later. Source SDK Base 2013 MP comes with 2.0.4, you'll need to use something newer, like the one that comes with Steam.**
+
+I have no plans to support anything other than Linux and Windows but it may incidentally become usable on other platforms that make use of SDL2.
 
 # Encoding compatible webms
 The easiest way to encode a compatiable webm is probably to use [WebmConverter](https://argorar.github.io/WebMConverter/), as encoding webm's is what it's designed to do. 
@@ -49,17 +51,16 @@ As it is 2023, you will probably want to be using VP9 and Opus for the best resu
 
 # TODO
 - The sound system is shutdown before video services is, which may result in a crash if you're doing something like a main menu background video
-- Audio playback on Linux
-- Rewrite my threaded code as I don't know what I'm doing
+- Audio resampling on Linux so Opus can work properly
 - Support for other pixel formats
 
-# Issues
+# Issues I won't fix
 - All video service features are not present such as video recording
-- Not everything works identically to BINK videos such as when the video will pause and audio volume
-- Some webms may not work if they a-typical such as having a varible framerate or resolution changes, or may desync at abnormally low framerates
+- Not everything works identically to Bink video and Valve's implementation, notable examples are when audio stops on dragging the game window, and exact video audio volume
+- Some videos may not work as expected if they are weird in any way, such as having a varible framerate or resolution changes, or may desync or stutter at abnormally low framerates
 
 # Sourcemod usage
-If you don't need audio or have created a new DirectSound object you can use this in sourcemods by placing this block of code in `CHLClient::Init`. Anywhere after all the interfaces are connected, specifically I'd put it after the `WORKSHOP_IMPORT_ENABLED` block.
+If you don't need audio or have created a new DirectSound object you can use this in sourcemods by placing this block of code in `CHLClient::Init`. Anywhere after all the interfaces are connected, I'd probably put it after the `WORKSHOP_IMPORT_ENABLED` block.
 ```cpp
 // disconnect the original video services
 if ( g_pVideo )
@@ -88,4 +89,4 @@ if ( video_services_module != nullptr )
 }
 ```
 
-If you needed the old video services still, I would recommend instaniating a new video services object specfically for the library, and only use it when applicable.
+If you needed the old video services still, I would recommend instantiating a new video services object specfically for the library, and only use it when needed.
