@@ -465,8 +465,10 @@ void CVideoMaterial::DestroySoundBuffer()
 		}
 	}
 #elif _LINUX
+	m_soundKilled = true;
 	if( m_pSDLAudioStream)
 		SDL_FreeAudioStream(m_pSDLAudioStream);
+	m_pSDLAudioStream = nullptr;
 
 	delete m_pAudioBuffer;
 #endif
@@ -875,7 +877,10 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 		if ( !m_audioDecoder->isOpen() )
 			return VideoResult_t::SUCCESS;
 
-		if( !m_videoStarted )
+		if( !m_videoPlaying )
+			return VideoResult_t::SUCCESS;
+
+		if( m_soundKilled)
 			return VideoResult_t::SUCCESS;
 
 		int length = *(int *)pData;
