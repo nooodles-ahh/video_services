@@ -28,14 +28,14 @@ The primary reason for having written this is that at the time of writing I'm a 
 		<td>:white_check_mark:</td>
 		<td>:white_check_mark:</td>
 		<td>:x:</td>
-		<td>*:white_check_mark:</td>
-		<td>*:white_check_mark:</td>
+		<td>:white_check_mark:</td>
+		<td>:white_check_mark:</td>
 	</tr>
 </table>
 
 I may support AV1 in the future as I have been asked about.
 
-\***Only audio with a sample rate of 44100 is supported on Linux right now, so you can only really use Vorbis for the time being**
+**Linux requires SDL 2.0.7 or later. Source SDK Base 2013 MP comes with 2.0.4, you'll need to use something newer, like the one that comes with Steam.**
 
 I have no plans to support anything other than Linux and Windows but it may incidentally become usable on other platforms that make use of SDL2.
 
