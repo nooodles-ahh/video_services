@@ -842,7 +842,7 @@ bool CVideoMaterial::IsMuted()
 VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t operation, void *pDevice, void *pData )
 {
 #ifdef _WIN32
-	if ( operation == VideoSoundDeviceOperation_t::SET_DIRECT_SOUND_DEVICE && pDevice )
+	if ( operation == VideoSoundDeviceOperation_t::SET_DIRECT_SOUND_DEVICE )
 	{
 		// if we had a sound buffer before, kill it
 		if ( m_pAudioDevice )
@@ -863,7 +863,12 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	// Called on start up and sound restart
 	else if( operation == VideoSoundDeviceOperation_t::SET_SDL_PARAMS )
 	{
-		// todo
+		// if we had a sound buffer before, kill it
+		if ( m_pAudioDevice )
+			DestroySoundBuffer();
+
+		CreateSoundBuffer( pDevice );
+		return VideoResult_t::SUCCESS;
 	}
 	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
 	{
