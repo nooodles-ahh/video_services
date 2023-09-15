@@ -18,6 +18,7 @@
 #include <Windows.h>
 #include "dsound.h"
 #elif _LINUX
+#include "SDL2/SDL.h"
 #include "SDL2/SDL_audio.h"
 #endif
 
@@ -203,8 +204,6 @@ private:
 	SDL_AudioSpec* m_pAudioDevice;
 	Uint8* m_pAudioBuffer;
 
-	Uint8* m_pStreamBuffer;
-	bool m_bUseSDLAudioStream;
 	SDL_AudioStream *m_pSDLAudioStream;
 #elif _WIN32
 	IDirectSound8* m_pAudioDevice;
@@ -218,7 +217,7 @@ private:
 	short* m_pcm;
 	int m_nAudioBufferWriteOffset;
 	int m_nAudioBufferReadOffset;
-	int m_nAudioBufferWritten;
+	int m_nAudioBufferFilledSize;
 
 	int m_nAudioBufferSize;
 	int m_nBytesPerSample;

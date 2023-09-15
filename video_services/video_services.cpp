@@ -12,7 +12,6 @@
 #include "tier2/tier2.h"
 #include "tier3/tier3.h"
 #ifdef _LINUX
-#include "SDL2/SDL.h"
 #include "appframework/ilaunchermgr.h"
 #endif
 
