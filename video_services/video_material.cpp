@@ -167,7 +167,6 @@ CVideoMaterial::~CVideoMaterial()
 
 	delete m_audioFrame;
 	delete m_pAudioBuffer;
-
 }
 
 bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFileName, void *pSoundDevice )
@@ -362,7 +361,7 @@ unsigned CVideoMaterial::_HandleBufferUpdates( void* params )
 			}
 			m->m_SoundBufferLock.Unlock();
 		}
-		ThreadSleep( 50 );
+		ThreadSleep( 10 );
 	}
 
 	return 0;
@@ -461,7 +460,6 @@ void CVideoMaterial::DestroySoundBuffer()
 		{
 			IDirectSoundBuffer8_Stop( m_pAudioBuffer );
 			IDirectSoundBuffer8_Release( m_pAudioBuffer );
-			delete m_pAudioBuffer;
 		}
 	}
 #elif _LINUX
