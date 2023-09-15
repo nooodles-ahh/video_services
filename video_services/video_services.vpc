@@ -64,7 +64,7 @@ $Project "Video Services"
 	{
 		$Lib tier2
 		$Lib tier3
-		$ImpLib SDL2 [$SDL]
+		$ImpLib $LIBVIDEO\SDL2 [$SDL]
 		$Lib $LIBVIDEO\libwebm
 		$ImpLib $LIBVIDEO\vpx
 		

@@ -16,6 +16,7 @@
 #include "tier1/utlbuffer.h"
 
 #ifdef _LINUX
+#include "SDL2/SDL.h"
 #include "SDL2/SDL_audio.h"
 #endif
 
@@ -46,7 +47,7 @@ void CYUVTextureRegenerator::RegenerateTextureBits( ITexture *pTexture, IVTFText
 		int lineSize = m_decodedImage->linesize[m_channel];
 		for ( int y = 0; y < m_videoHeight; ++y )
 		{
-			memcpy( imageData, pixels, m_videoWidth );
+			Q_memcpy( imageData, pixels, m_videoWidth );
 			imageData += rowSize;
 			pixels += lineSize;
 		}
@@ -92,7 +93,7 @@ CVideoMaterial::CVideoMaterial()
 
 	m_videoPath[0] = '\0';
 
-	m_volume = 0.0f;
+	m_volume = 1.0f;
 	m_videoTime = 0.0;
 	m_curTime = 0.0;
 	m_prevTicks = 0;
@@ -112,6 +113,10 @@ CVideoMaterial::CVideoMaterial()
 
 	m_pAudioDevice = nullptr;
 	m_pAudioBuffer = nullptr;
+#ifdef _LINUX
+	m_bUseSDLAudioStream = false;
+	m_pSDLAudioStream = nullptr;
+#endif
 }
 
 CVideoMaterial::~CVideoMaterial()
@@ -263,11 +268,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 		if ( !m_videoDecoder->decode( video_frame ) )
 			continue;
 
-		VPXDecoder::IMAGE_ERROR err;
-		if ( ( err = m_videoDecoder->getImage( image ) ) == VPXDecoder::NO_FRAME )
-			continue;
-
-		if ( err == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR )
+		if ( m_videoDecoder->getImage( image ) == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR )
 		{
 			m_yTextureRegen->m_decodedImage = &image;
 			m_crTextureRegen->m_decodedImage = &image;
@@ -390,16 +391,30 @@ bool CVideoMaterial::CreateSoundBuffer(void *pSoundDevice)
 	//Calculate buffer size
 	m_nAudioBufferSize = BUFFER_SIZE;
 
-	//Allocate and initialize byte buffer
-	m_pAudioBuffer = new Uint8[ m_nAudioBufferSize ];
-	memset( m_pAudioBuffer, 0, m_nAudioBufferSize );
+	// if SDL2 version is greater or equal to 2.0.7 enable SDL_AudioStream
+	SDL_version ver;
+	SDL_GetVersion(&ver);
+	if(SDL_VERSION_ATLEAST(2, 0, 7))
+	{
+		m_bUseSDLAudioStream = true;
+		m_pAudioBuffer = new Uint8[ m_pAudioDevice->size ];
+		m_pStreamBuffer = new Uint8[ m_pAudioDevice->size ];
+		m_pSDLAudioStream = SDL_NewAudioStream(AUDIO_S16, m_demuxer->getChannels(), m_demuxer->getSampleRate(), 
+												m_pAudioDevice->format, m_pAudioDevice->channels, m_pAudioDevice->freq);
+	}
+	else
+	{
+		//Allocate and initialize byte buffer
+		m_pAudioBuffer = new Uint8[ m_nAudioBufferSize ];
+		Q_memset( m_pAudioBuffer, 0, m_nAudioBufferSize );
+	}
 
 	return true;
 #elif _WIN32
 	m_pAudioDevice = ( IDirectSound8* )pSoundDevice;
 	
 	WAVEFORMATEX waveFormat;
-	memset( &waveFormat, 0, sizeof( WAVEFORMATEX ) );
+	Q_memset( &waveFormat, 0, sizeof( WAVEFORMATEX ) );
 	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
 	waveFormat.nChannels = m_demuxer->getChannels();
 	waveFormat.nSamplesPerSec = m_demuxer->getSampleRate();
@@ -409,7 +424,7 @@ bool CVideoMaterial::CreateSoundBuffer(void *pSoundDevice)
 	waveFormat.cbSize = 0;
 
 	DSBUFFERDESC dsbd;
-	memset( &dsbd, 0, sizeof( DSBUFFERDESC ) );
+	Q_memset( &dsbd, 0, sizeof( DSBUFFERDESC ) );
 	dsbd.dwSize = sizeof( DSBUFFERDESC );
 	dsbd.dwBufferBytes = BUFFER_SIZE;
 	dsbd.lpwfxFormat = &waveFormat;
@@ -510,14 +525,14 @@ void CVideoMaterial::SetPaused( bool bPauseState )
 #endif
 			m_prevTicks = Plat_MSTime();
 		}
-		// Pause
+#ifdef _WIN32
+		// Pause sound buffer
 		else if ( m_videoPlaying && bPauseState )
 		{
-#ifdef _WIN32
 			if ( m_pAudioBuffer )
 				IDirectSoundBuffer8_Stop( m_pAudioBuffer );
-#endif
 		}
+#endif
 	}
 
 	m_videoPlaying = !bPauseState;
@@ -586,9 +601,7 @@ void CVideoMaterial::RestartVideo()
 bool CVideoMaterial::Update()
 {
 	if ( !StartVideo() )
-	{
 		return false;
-	}
 
 	// the video has stopped, there is nothing more to do
 	if ( m_videoStopped )
@@ -596,9 +609,7 @@ bool CVideoMaterial::Update()
 
 	// we're not stopped, but we're paused
 	if ( !m_videoPlaying )
-	{
 		return true;
-	}
 
 	// Update time
 	unsigned int curTicks = Plat_MSTime();
@@ -666,7 +677,9 @@ bool CVideoMaterial::Update()
 			delete video_frame;
 		}
 		else
+		{
 			m_videoFrames.Insert( video_frame );
+		}
 
 		if ( m_audioFrame->isValid() && m_pAudioBuffer )
 		{
@@ -674,8 +687,6 @@ bool CVideoMaterial::Update()
 			int numOutSamples = 0;
 			int nPCMOverflowSize = 0;
 			int nPCMOverflowOffset = 0;
-
-			bUpdateBuffer = m_nAudioBufferWritten <= BUFFER_FILLED_MIN && !m_demuxer->isEOS();
 			
 			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
 			if ( numOutSamples == 0 )
@@ -702,7 +713,11 @@ bool CVideoMaterial::Update()
 			pAudioPtr = m_pAudioBuffer + m_nAudioBufferWriteOffset;
 #endif
 
-			memcpy( pAudioPtr, m_pcm, nBytesRead );
+			if( m_bUseSDLAudioStream )
+				SDL_AudioStreamPut(m_pSDLAudioStream, m_pcm, nBytesRead);
+			else
+				Q_memcpy( pAudioPtr, m_pcm, nBytesRead );
+			
 			m_nAudioBufferWriteOffset += nBytesRead;
 
 #ifdef _WIN32
@@ -717,7 +732,11 @@ bool CVideoMaterial::Update()
 #elif _LINUX
 				pAudioPtr = m_pAudioBuffer;
 #endif
-				memcpy( pAudioPtr, ( char* )( m_pcm )+nPCMOverflowOffset, nPCMOverflowSize );
+				if( m_bUseSDLAudioStream )
+					SDL_AudioStreamGet(m_pSDLAudioStream, ( char* )( m_pcm )+nPCMOverflowOffset, nPCMOverflowSize);
+				else
+					Q_memcpy( pAudioPtr, ( char* )( m_pcm )+nPCMOverflowOffset, nPCMOverflowSize );
+				
 				m_nAudioBufferWriteOffset += nPCMOverflowSize;
 #ifdef _WIN32
 				IDirectSoundBuffer8_Unlock( m_pAudioBuffer, pAudioPtr, dwAudioBytes1, NULL, NULL );
@@ -729,6 +748,8 @@ bool CVideoMaterial::Update()
 			{
 				m_curTime = m_audioFrame->time;
 			}
+
+			bUpdateBuffer = m_nAudioBufferWritten <= BUFFER_FILLED_MIN && !m_demuxer->isEOS();
 		}
 	}
 
@@ -751,19 +772,15 @@ bool CVideoMaterial::Update()
 			// TODO figure out how to skip frames
 			m_videoDecoder->decode( *m_videoFrames.Head() );
 
-			VPXDecoder::IMAGE_ERROR err;
-			if ( ( err = m_videoDecoder->getImage( *m_image ) ) != VPXDecoder::NO_FRAME )
+			if ( m_videoDecoder->getImage( *m_image ) == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR )
 			{
-				if ( err == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR )
-				{
-					m_yTextureRegen->m_decodedImage = m_image;
-					m_crTextureRegen->m_decodedImage = m_image;
-					m_cbTextureRegen->m_decodedImage = m_image;
+				m_yTextureRegen->m_decodedImage = m_image;
+				m_crTextureRegen->m_decodedImage = m_image;
+				m_cbTextureRegen->m_decodedImage = m_image;
 
-					m_yTexture->Download();
-					m_crTexture->Download();
-					m_cbTexture->Download();
-				}
+				m_yTexture->Download();
+				m_crTexture->Download();
+				m_cbTexture->Download();
 			}
 			m_videoTime = m_videoFrames.Head()->time;
 			m_currentFrame++;
@@ -786,8 +803,8 @@ IMaterial *CVideoMaterial::GetMaterial()
 // Where the video is actually is within the texture
 void CVideoMaterial::GetVideoTexCoordRange( float *pMaxU, float *pMaxV )
 {
-	*pMaxU = m_videoWidth / (float)m_textureWidth;
-	*pMaxV = m_videoHeight / (float)m_textureHeight;
+	*pMaxU = (float)m_videoWidth / (float)m_textureWidth;
+	*pMaxV = (float)m_videoHeight / (float)m_textureHeight;
 }
 
 void CVideoMaterial::GetVideoImageSize( int *pWidth, int *pHeight )
@@ -804,15 +821,16 @@ bool CVideoMaterial::HasAudio()
 
 bool CVideoMaterial::SetVolume( float fVolume )
 {
-#ifdef _WIN32
+	m_volume = min( 1.0f, max( 0.0f, fVolume ) );
 	if ( !m_pAudioBuffer )
 		return false;
 
-	float vol = min( 1.0f, max( 0.0f, fVolume ) );
-	m_volume = vol;
+#ifdef _WIN32
 	// TODO figure out what fucking value I'm supposed to use
-	float log_volume = pow( vol, 0.2 );
+	float log_volume = pow( m_volume, 0.2 );
 	m_pAudioBuffer->SetVolume( ( LONG )( -10000 * ( 1.0f - log_volume ) ) );
+	return true;
+#elif _LINUX
 	return true;
 #else
 	return false;
@@ -869,7 +887,15 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 
 		int length = *(int *)pData;
 		Uint8 *stream = (Uint8 *)pDevice;
-		SDL_MixAudioFormat( stream, &m_pAudioBuffer[m_nAudioBufferReadOffset], m_pAudioDevice->format, length, 64 );
+		if( m_bUseSDLAudioStream )
+		{
+			SDL_AudioStreamGet( m_pSDLAudioStream, m_pAudioBuffer, length);
+			SDL_MixAudioFormat( stream, m_pAudioBuffer, m_pAudioDevice->format, length, (int)(GetVolume() * SDL_MIX_MAXVOLUME) );
+		}
+		else
+		{
+			SDL_MixAudioFormat( stream, &m_pAudioBuffer[m_nAudioBufferReadOffset], m_pAudioDevice->format, length, (int)(GetVolume() * SDL_MIX_MAXVOLUME) );
+		}
 		m_nAudioBufferReadOffset += length;
 		m_nAudioBufferWritten -= length;
 

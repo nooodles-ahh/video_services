@@ -90,7 +90,7 @@ public:
 	virtual const wchar_t *GetCodecName( VideoEncodeCodec_t nCodec );
 
 private:
-	int m_iUniqueID;
+	int m_iUniqueVideoID;
 
 	CUtlVector< IVideoMaterial *> m_vecVideos;
 #ifdef _WIN32

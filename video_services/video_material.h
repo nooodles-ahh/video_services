@@ -202,9 +202,14 @@ private:
 #ifdef _LINUX
 	SDL_AudioSpec* m_pAudioDevice;
 	Uint8* m_pAudioBuffer;
+
+	Uint8* m_pStreamBuffer;
+	bool m_bUseSDLAudioStream;
+	SDL_AudioStream *m_pSDLAudioStream;
 #elif _WIN32
 	IDirectSound8* m_pAudioDevice;
 	IDirectSoundBuffer* m_pAudioBuffer;
+
 	CThreadMutex m_SoundBufferLock;
 	ThreadHandle_t m_hSoundBufferThreadHandle;
 #endif
