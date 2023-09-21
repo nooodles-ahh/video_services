@@ -8,19 +8,11 @@
 
 #include "video_material.h"
 #include "video_services.h"
-#include "tier0/platform.h"
-#include "tier1/KeyValues.h"
-#include "tier3/tier3.h"
 #include "materialsystem/imaterial.h"
 #include "filesystem.h"
+#include "tier0/platform.h"
+#include "tier1/KeyValues.h"
 #include "tier1/utlbuffer.h"
-
-#ifdef _LINUX
-#include "SDL2/SDL.h"
-#include "SDL2/SDL_audio.h"
-#elif _WIN32
-#include <windows.h>
-#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -28,24 +20,27 @@
 // about a second
 #define BUFFER_SIZE 196608
 // at minimim accomdate about an update every 125ms
-#define BUFFER_FILLED_MIN 4096 * 8
+#define BUFFER_FILLED_MIN 4096 * 16
 #define FREEZE_TIME 0.125
 
 //=============================================================================
 // 
 // Video texture regenerator
 // 
+// Notes: Bik shader only supports YUV420, I might eventually support more 
+//			video colour formats but I will need to write the shaders
+// 
 //=============================================================================
-void CYUVTextureRegenerator::RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTFTexture, Rect_t *pSubRect )
+template <YUVChannel_t Channel>
+void CYUVTextureRegenerator<Channel>::RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTFTexture, Rect_t *pSubRect )
 {
 	unsigned char *imageData = pVTFTexture->ImageData();
 	int rowSize = pVTFTexture->RowSizeInBytes( 0 );
-	// Bik shader only supports YUV420
-	// TODO - support more video colour formats but I will need shaders
-	if ( m_decodedImage && m_decodedImage->chromaShiftW == 1 && m_decodedImage->chromaShiftH == 1 )
+
+	if ( m_decodedImage )
 	{
-		unsigned char *pixels = m_decodedImage->planes[m_channel];
-		int lineSize = m_decodedImage->linesize[m_channel];
+		unsigned char *pixels = m_decodedImage->planes[ Channel ];
+		int lineSize = m_decodedImage->linesize[ Channel ];
 		for ( int y = 0; y < m_videoHeight; ++y )
 		{
 			Q_memcpy( imageData, pixels, m_videoWidth );
@@ -53,10 +48,6 @@ void CYUVTextureRegenerator::RegenerateTextureBits( ITexture *pTexture, IVTFText
 			pixels += lineSize;
 		}
 	}
-}
-
-void CYUVTextureRegenerator::Release()
-{
 }
 
 //=============================================================================
@@ -120,7 +111,7 @@ CVideoMaterial::CVideoMaterial()
 	m_directSoundNotify = nullptr;
 	m_endEventHandle = nullptr;
 	m_halfwayEventHandle = nullptr;
-	m_overEventHandle = nullptr;
+	m_videoOverEventHandle = nullptr;
 #endif
 }
 
@@ -132,28 +123,28 @@ CVideoMaterial::~CVideoMaterial()
 
 	DestroySoundBuffer();
 
-	// Nooodles; often the same video material is used over and over, so unless you completely rid of it
-	// issues arise. I don't know how much of this is necessary anymore now that it actually dies, but better safe than sorry
+	// Often the same video material is used over and over, so unless you completely rid of it issues arise. 
+	// I don't know how much of this is necessary anymore now that it actually dies, but better safe than sorry
 
 	if ( m_crTexture.IsValid() )
-		{
-			m_crTexture->SetTextureRegenerator( nullptr );
-			m_crTexture.Shutdown( true );
-		}
-		if ( m_cbTexture.IsValid() )
-		{
-			m_cbTexture->SetTextureRegenerator( nullptr );
-			m_cbTexture.Shutdown( true );
-		}
-		if ( m_yTexture.IsValid() )
-		{
-			m_yTexture->SetTextureRegenerator( nullptr );
-			m_yTexture.Shutdown( true );
-		}
+	{
+		m_crTexture->SetTextureRegenerator( nullptr );
+		m_crTexture.Shutdown( true );
+	}
+	if ( m_cbTexture.IsValid() )
+	{
+		m_cbTexture->SetTextureRegenerator( nullptr );
+		m_cbTexture.Shutdown( true );
+	}
+	if ( m_yTexture.IsValid() )
+	{
+		m_yTexture->SetTextureRegenerator( nullptr );
+		m_yTexture.Shutdown( true );
+	}
 
-	delete m_crTexture;
-	delete m_cbTexture;
-	delete m_yTexture;
+	//delete m_crTexture;
+	//delete m_cbTexture;
+	//delete m_yTexture;
 
 	delete m_yTextureRegen;
 	delete m_crTextureRegen;
@@ -174,8 +165,8 @@ CVideoMaterial::~CVideoMaterial()
 		CloseHandle( m_endEventHandle );
 	if ( m_halfwayEventHandle )
 		CloseHandle( m_halfwayEventHandle );
-	if ( m_overEventHandle )
-		CloseHandle( m_overEventHandle );
+	if ( m_videoOverEventHandle )
+		CloseHandle( m_videoOverEventHandle );
 #endif
 
 	delete m_pcm;
@@ -208,30 +199,134 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 		}
 		return false;
 	}
-
-#ifdef WIN32
-	SYSTEM_INFO info;
-	GetSystemInfo( &info );
-	int numthreads = clamp( info.dwNumberOfProcessors - 2, 1, 8 );
+	
+	// assign the decoder a reasonable number of threads
+	const CPUInformation& cpuInfo = *GetCPUInformation();
+	unsigned int numthreads = clamp( cpuInfo.m_nLogicalProcessors - 2, 1, 8 );
 	m_videoDecoder = new VPXDecoder( *m_demuxer, numthreads );
-#else
-	// TODO - Get linux core count
-	m_videoDecoder = new VPXDecoder( *m_demuxer, 4 );
-#endif
 	m_audioDecoder = new OpusVorbisDecoder( *m_demuxer );
 	m_pcm = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
 	m_videoWidth = m_demuxer->getWidth();
 	m_videoHeight = m_demuxer->getHeight();
-	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); // This is a guessed framerate from the first 50 frames
-	CreateSoundBuffer(pSoundDevice);
+	// This is a guessed framerate from the first 50 frames 
+	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); 
 
+	CreateSoundBuffer( pSoundDevice );
+	CreateVideoMaterial( pMaterialName );
+	return true;
+}
+
+bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
+{
+	if ( !m_audioDecoder->isOpen() )
+		return false;
+
+	if ( !pSoundDevice )
+	{
+		DevMsg( "No sound device!\n" );
+		return false;
+	}
+
+#ifdef _LINUX
+	// todo; Error checking
+
+	// this is a copy recieved from services so we don't need to allocate it
+	m_pAudioDevice = ( SDL_AudioSpec* )pSoundDevice;
+	m_nBytesPerSample = m_pAudioDevice->channels * ( SDL_AUDIO_BITSIZE( m_pAudioDevice->format ) / 8 );
+
+	//Calculate buffer size
+	m_nAudioBufferSize = BUFFER_SIZE;
+
+	// if SDL2 version is greater or equal to 2.0.7 enable SDL_AudioStream
+	SDL_version ver;
+	SDL_GetVersion( &ver );
+	if ( !SDL_VERSION_ATLEAST( 2, 0, 7 ) )
+	{
+		ConColorMsg( Color( 255, 0, 0, 255 ), "SDL must be version 2.0.7 or higher in order to playback video sound!\n" );
+	}
+	else
+	{
+		m_pAudioBuffer = new Uint8[ m_pAudioDevice->size ];
+		m_pSDLAudioStream = SDL_NewAudioStream( AUDIO_S16, m_demuxer->getChannels(), m_demuxer->getSampleRate(),
+		m_pAudioDevice->format, m_pAudioDevice->channels, m_pAudioDevice->freq );
+	}
+
+	return true;
+#elif _WIN32
+	m_pAudioDevice = ( IDirectSound* )pSoundDevice;
+
+	WAVEFORMATEX waveFormat;
+	Q_memset( &waveFormat, 0, sizeof( WAVEFORMATEX ) );
+	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
+	waveFormat.nChannels = m_demuxer->getChannels();
+	waveFormat.nSamplesPerSec = m_demuxer->getSampleRate();
+	waveFormat.wBitsPerSample = 16; // S16
+	waveFormat.nBlockAlign = ( waveFormat.nChannels * waveFormat.wBitsPerSample ) / 8;
+	waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
+	waveFormat.cbSize = 0;
+
+	DSBUFFERDESC dsbd;
+	Q_memset( &dsbd, 0, sizeof( DSBUFFERDESC ) );
+	dsbd.dwSize = sizeof( DSBUFFERDESC );
+	dsbd.dwBufferBytes = BUFFER_SIZE;
+	dsbd.lpwfxFormat = &waveFormat;
+
+	// if we have the losefocus cvar determine if we want to remove the global focus flag
+	dsbd.dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLPAN | DSBCAPS_LOCSOFTWARE | DSBCAPS_CTRLPOSITIONNOTIFY | DSBCAPS_GLOBALFOCUS;
+	ConVar* snd_mute_losefocus = g_pCVar->FindVar( "snd_mute_losefocus" );
+	if ( snd_mute_losefocus )
+	{
+		if ( snd_mute_losefocus->GetBool() )
+			dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
+	}
+
+	m_nAudioBufferSize = BUFFER_SIZE;
+	m_nBytesPerSample = waveFormat.nBlockAlign;
+
+	IDirectSoundBuffer* tempBuffer = nullptr;
+	if ( FAILED( IDirectSound_CreateSoundBuffer( m_pAudioDevice, &dsbd, &tempBuffer, NULL ) ) )
+		return false;
+
+	if ( FAILED( IDirectSoundBuffer_QueryInterface( tempBuffer, IID_IDirectSoundBuffer, ( LPVOID* )&m_pAudioBuffer ) ) )
+		return false;
+
+	m_pAudioBuffer->AddRef();
+	tempBuffer->Release();
+
+	if ( FAILED( IDirectSoundBuffer_QueryInterface( m_pAudioBuffer, IID_IDirectSoundNotify, ( LPVOID* )&m_directSoundNotify ) ) )
+		return false;
+
+	DSBPOSITIONNOTIFY posNotify[ 2 ];
+	Q_memset( &posNotify, 0, sizeof( posNotify ) );
+
+	// create nofitication
+	m_endEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
+	m_halfwayEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
+	m_videoOverEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
+
+	// notifcations at end and halfway mark
+	posNotify[ 0 ].dwOffset = BUFFER_SIZE - 1;
+	posNotify[ 0 ].hEventNotify = m_endEventHandle;
+	posNotify[ 1 ].dwOffset = ( BUFFER_SIZE / 2.0f ) - 1;
+	posNotify[ 1 ].hEventNotify = m_halfwayEventHandle;
+
+	IDirectSoundNotify_SetNotificationPositions( m_directSoundNotify, 2, posNotify );
+
+	m_hBufferThreadHandle = CreateSimpleThread( HandleBufferUpdates, this );
+#endif
+	m_soundKilled = false;
+	return true;
+}
+
+void CVideoMaterial::CreateVideoMaterial( const char* pMaterialName )
+{
 	// ---------------------------
 	// texture
-	char ytexture[MAX_PATH];
+	char ytexture[ MAX_PATH ];
 	Q_snprintf( ytexture, MAX_PATH, "%s_y", pMaterialName );
-	char crtexture[MAX_PATH];
+	char crtexture[ MAX_PATH ];
 	Q_snprintf( crtexture, MAX_PATH, "%s_cr", pMaterialName );
-	char cbtexture[MAX_PATH];
+	char cbtexture[ MAX_PATH ];
 	Q_snprintf( cbtexture, MAX_PATH, "%s_cb", pMaterialName );
 
 	int tex_flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_PROCEDURAL |
@@ -247,9 +342,9 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	m_cbTexture.InitProceduralTexture( cbtexture, "VideoCacheTextures", m_textureWidth >> 1, m_textureHeight >> 1, IMAGE_FORMAT_I8, tex_flags );
 	m_crTexture.InitProceduralTexture( crtexture, "VideoCacheTextures", m_textureWidth >> 1, m_textureHeight >> 1, IMAGE_FORMAT_I8, tex_flags );
 
-	m_yTextureRegen = new CYUVTextureRegenerator( CHANNEL_Y, m_videoWidth, m_videoHeight );
-	m_cbTextureRegen = new CYUVTextureRegenerator( CHANNEL_CB, m_videoWidth / 2, m_videoHeight / 2 );
-	m_crTextureRegen = new CYUVTextureRegenerator( CHANNEL_CR, m_videoWidth / 2, m_videoHeight / 2 );
+	m_yTextureRegen = new CYUVTextureRegenerator<YUVCHANNEL_Y>( m_videoWidth, m_videoHeight );
+	m_cbTextureRegen = new CYUVTextureRegenerator<YUVCHANNEL_CB>( m_videoWidth / 2, m_videoHeight / 2 );
+	m_crTextureRegen = new CYUVTextureRegenerator<YUVCHANNEL_CR>( m_videoWidth / 2, m_videoHeight / 2 );
 	m_yTexture->SetTextureRegenerator( m_yTextureRegen );
 	m_crTexture->SetTextureRegenerator( m_crTextureRegen );
 	m_cbTexture->SetTextureRegenerator( m_cbTextureRegen );
@@ -258,7 +353,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	// material
 	// 
 	// Use the Bik shader as it deals with YUV420
-	KeyValues *pVMTKeyValues = new KeyValues( "Bik" );
+	KeyValues* pVMTKeyValues = new KeyValues( "Bik" );
 	pVMTKeyValues->SetString( "$ytexture", ytexture );
 	pVMTKeyValues->SetString( "$cbtexture", cbtexture );
 	pVMTKeyValues->SetString( "$crtexture", crtexture );
@@ -301,7 +396,6 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 	}
 
 	m_demuxer->resetVideo();
-	return true;
 }
 
 const char *CVideoMaterial::GetVideoFileName()
@@ -342,8 +436,7 @@ bool CVideoMaterial::IsFinishedPlaying()
 
 #if _WIN32
 //-----------------------------------------------------------------------------
-// Purpose: Thread function that deals with pausing the sound buffer if it
-// hasn't been filled in a while
+// Purpose: Threaded function that pauses the sound buffer if it hasn't been updated in a while
 //-----------------------------------------------------------------------------
 unsigned int CVideoMaterial::HandleBufferUpdates( void* params )
 {	
@@ -352,7 +445,7 @@ unsigned int CVideoMaterial::HandleBufferUpdates( void* params )
 	HANDLE hEvents[ 3 ];
 	hEvents[ 0 ] = m->m_endEventHandle;
 	hEvents[ 1 ] = m->m_halfwayEventHandle;
-	hEvents[ 2 ] = m->m_overEventHandle;
+	hEvents[ 2 ] = m->m_videoOverEventHandle;
 	while ( true )
 	{
 		DWORD result = WaitForMultipleObjects( 3, hEvents, FALSE, INFINITE );
@@ -382,108 +475,6 @@ unsigned int CVideoMaterial::HandleBufferUpdates( void* params )
 }
 #endif
 
-bool CVideoMaterial::CreateSoundBuffer(void *pSoundDevice)
-{
-	if ( !m_audioDecoder->isOpen() )
-		return false;
-
-	if ( !pSoundDevice )
-	{
-		ConMsg( "No sound device!\n" );
-		return false;
-	}
-
-#ifdef _LINUX
-	// todo; Error checking
-
-	// this is a copy recieved from services so we don't need to allocate it
-	m_pAudioDevice = ( SDL_AudioSpec* )pSoundDevice;
-	m_nBytesPerSample = m_pAudioDevice->channels * ( SDL_AUDIO_BITSIZE( m_pAudioDevice->format ) / 8 );
-
-	//Calculate buffer size
-	m_nAudioBufferSize = BUFFER_SIZE;
-
-	// if SDL2 version is greater or equal to 2.0.7 enable SDL_AudioStream
-	SDL_version ver;
-	SDL_GetVersion(&ver);
-	if(!SDL_VERSION_ATLEAST(2, 0, 7))
-	{
-		ConColorMsg( Color( 255, 0, 0, 255 ), "SDL must be version 2.0.7 or higher in order to playback video sound!\n" );
-	}
-	else
-	{
-		m_pAudioBuffer = new Uint8[ m_pAudioDevice->size ];
-		m_pSDLAudioStream = SDL_NewAudioStream(AUDIO_S16, m_demuxer->getChannels(), m_demuxer->getSampleRate(), 
-												m_pAudioDevice->format, m_pAudioDevice->channels, m_pAudioDevice->freq);
-	}
-
-	return true;
-#elif _WIN32
-	m_pAudioDevice = ( IDirectSound* )pSoundDevice;
-	
-	WAVEFORMATEX waveFormat;
-	Q_memset( &waveFormat, 0, sizeof( WAVEFORMATEX ) );
-	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
-	waveFormat.nChannels = m_demuxer->getChannels();
-	waveFormat.nSamplesPerSec = m_demuxer->getSampleRate();
-	waveFormat.wBitsPerSample = 16; // S16
-	waveFormat.nBlockAlign = ( waveFormat.nChannels * waveFormat.wBitsPerSample ) / 8;
-	waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
-	waveFormat.cbSize = 0;
-
-	DSBUFFERDESC dsbd;
-	Q_memset( &dsbd, 0, sizeof( DSBUFFERDESC ) );
-	dsbd.dwSize = sizeof( DSBUFFERDESC );
-	dsbd.dwBufferBytes = BUFFER_SIZE;
-	dsbd.lpwfxFormat = &waveFormat;
-
-	// if we have the losefocus cvar determine if we want to remove the global focus flag
-	dsbd.dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLPAN | DSBCAPS_LOCSOFTWARE | DSBCAPS_CTRLPOSITIONNOTIFY | DSBCAPS_GLOBALFOCUS;
-	ConVar* snd_mute_losefocus = g_pCVar->FindVar( "snd_mute_losefocus" );
-	if ( snd_mute_losefocus )
-	{
-		if ( snd_mute_losefocus->GetBool() )
-			dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
-	}
-
-	m_nAudioBufferSize = BUFFER_SIZE;
-	m_nBytesPerSample = waveFormat.nBlockAlign;
-
-	IDirectSoundBuffer* tempBuffer = nullptr;
-	if ( FAILED( IDirectSound_CreateSoundBuffer( m_pAudioDevice, &dsbd, &tempBuffer, NULL ) ) )
-		return false;
-	
-	if ( FAILED( tempBuffer->QueryInterface( IID_IDirectSoundBuffer, ( void** )&m_pAudioBuffer ) ) )
-		return false;
-
-	m_pAudioBuffer->AddRef();
-	tempBuffer->Release();
-
-	if ( FAILED( m_pAudioBuffer->QueryInterface( IID_IDirectSoundNotify, ( LPVOID* )&m_directSoundNotify ) ) )
-		return false;
-	
-	DSBPOSITIONNOTIFY posNotify[ 2 ];
-	ZeroMemory( posNotify, sizeof( posNotify ) );
-
-	// create nofitication
-	m_endEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
-	m_halfwayEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
-	m_overEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
-
-	// notifcations at end and halfway mark
-	posNotify[ 0 ].dwOffset = BUFFER_SIZE - 1;
-	posNotify[ 0 ].hEventNotify = m_endEventHandle;
-	posNotify[ 1 ].dwOffset = (BUFFER_SIZE / 2.0f) - 1;
-	posNotify[ 1 ].hEventNotify = m_halfwayEventHandle;
-
-	IDirectSoundNotify_SetNotificationPositions(m_directSoundNotify, 2, posNotify );
-	
-	m_hBufferThreadHandle = CreateSimpleThread( HandleBufferUpdates, this );
-#endif
-	m_soundKilled = false;
-	return true;
-}
-
 void CVideoMaterial::DestroySoundBuffer()
 {
 	if ( !m_pAudioBuffer )
@@ -499,7 +490,7 @@ void CVideoMaterial::DestroySoundBuffer()
 
 	if ( m_hBufferThreadHandle )
 	{
-		SetEvent( m_overEventHandle );
+		SetEvent( m_videoOverEventHandle );
 		ThreadJoin( m_hBufferThreadHandle );
 		ReleaseThreadHandle( m_hBufferThreadHandle );
 	}
@@ -675,26 +666,10 @@ bool CVideoMaterial::Update()
 #ifdef _WIN32
 	if ( m_pAudioBuffer )
 	{
-#if 1
 		// kinda rough but it'll do
 		m_nAudioBufferFilledSize -= m_demuxer->getSampleRate() * m_nBytesPerSample * timepassed;
 		if ( m_nAudioBufferFilledSize < 0 )
 			m_nAudioBufferFilledSize = 0;
-#else
-		DWORD bufferCursor = 0;
-		m_pAudioBuffer->GetCurrentPosition( &bufferCursor, NULL );
-
-		int nBytesPlayed = 0;
-
-		// wrapped back around
-		if ( m_nAudioBufferReadOffset > ( int )bufferCursor )
-			nBytesPlayed = ( m_nAudioBufferSize - m_nAudioBufferReadOffset ) + bufferCursor;
-		else
-			nBytesPlayed = bufferCursor - m_nAudioBufferReadOffset;
-
-		m_nAudioBufferReadOffset = bufferCursor;
-		m_nAudioBufferFilledSize -= nBytesPlayed;
-#endif
 	}
 #endif
 
@@ -900,7 +875,7 @@ bool CVideoMaterial::SetVolume( float fVolume )
 #ifdef _WIN32
 	// TODO figure out what fucking value I'm supposed to use
 	float log_volume = pow( m_volume, 0.2 );
-	m_pAudioBuffer->SetVolume( ( LONG )( -10000 * ( 1.0f - log_volume ) ) );
+	IDirectSoundBuffer_SetVolume( m_pAudioBuffer, ( LONG )( -10000 * ( 1.0f - log_volume ) ) );
 	return true;
 #elif _LINUX
 	return true;

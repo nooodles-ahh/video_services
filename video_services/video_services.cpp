@@ -51,14 +51,13 @@ bool CVideoServices::Connect( CreateInterfaceFn factory )
 		return false;
 		
 #ifdef _LINUX
-	g_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL );
+	g_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, nullptr );
 	if( !g_pLauncherMgr )
 		return false;
 #endif
 
 	return true;
 }
-
 
 // --------------------------------------------------------------------
 // Purpose: 
@@ -68,16 +67,14 @@ void CVideoServices::Disconnect()
 	BaseClass::Disconnect();
 }
 
-
 // --------------------------------------------------------------------
 // Purpose: 
 // --------------------------------------------------------------------
 void *CVideoServices::QueryInterface( const char *pInterfaceName )
 {
 	CreateInterfaceFn factory = Sys_GetFactoryThis();
-	return factory( pInterfaceName, NULL );
+	return factory( pInterfaceName, nullptr );
 }
-
 
 // --------------------------------------------------------------------
 // Purpose: 
@@ -90,7 +87,6 @@ InitReturnVal_t	CVideoServices::Init()
 
 	return INIT_OK;
 }
-
 
 // --------------------------------------------------------------------
 // Purpose: 

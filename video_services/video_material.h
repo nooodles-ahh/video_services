@@ -7,20 +7,25 @@
 #include "materialsystem/itexture.h"
 #include "materialsystem/MaterialSystemUtil.h"
 #include "video/ivideoservices.h"
+#include "tier1/utlqueue.h"
 
 #include "OpusVorbisDecoder.hpp"
 #include "VPXDecoder.hpp"
 #include <mkvparser/mkvparser.h>
-#include <sys/types.h>
-#include "tier1/utlqueue.h"
 
 #ifdef _WIN32
-#include <Windows.h>
+#include <windows.h>
 #include "dsound.h"
 #elif _LINUX
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_audio.h"
 #endif
+
+typedef enum YUVChannel_e {
+	YUVCHANNEL_Y,
+	YUVCHANNEL_CB,
+	YUVCHANNEL_CR,
+} YUVChannel_t;
 
 class MkvReader : public mkvparser::IMkvReader
 {
@@ -62,30 +67,23 @@ private:
 	FILE *m_file;
 };
 
-enum Channel_e {
-	CHANNEL_Y,
-	CHANNEL_CB,
-	CHANNEL_CR,
-};
-
+template <YUVChannel_t Channel>
 class CYUVTextureRegenerator : public ITextureRegenerator
 {
 public:
-	CYUVTextureRegenerator( Channel_e c, int w, int h )
+	CYUVTextureRegenerator( int w, int h )
 	{
 		m_decodedImage = nullptr;
-		m_channel = c;
 		m_videoWidth = w;
 		m_videoHeight = h;
 	}
 
 	// ITextureRegenerator
 	virtual void RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTFTexture, Rect_t *pSubRect );
-	virtual void Release();
+	virtual void Release() {};
 	VPXDecoder::Image *m_decodedImage;
 
 private:
-	Channel_e m_channel;
 	int m_videoWidth;
 	int m_videoHeight;
 };
@@ -158,6 +156,7 @@ private:
 	bool CreateSoundBuffer(void *pSoundDevice = nullptr);
 	void DestroySoundBuffer();
 	void RestartVideo();
+	void CreateVideoMaterial(const char *pMaterialName);
 
 private:
 
@@ -170,9 +169,9 @@ private:
 	VPXDecoder::Image *m_image;
 
 	CMaterialReference m_videoMaterial;
-	CYUVTextureRegenerator *m_yTextureRegen;
-	CYUVTextureRegenerator *m_cbTextureRegen;
-	CYUVTextureRegenerator *m_crTextureRegen;
+	CYUVTextureRegenerator<YUVCHANNEL_Y> *m_yTextureRegen;
+	CYUVTextureRegenerator<YUVCHANNEL_CB> *m_cbTextureRegen;
+	CYUVTextureRegenerator<YUVCHANNEL_CR> *m_crTextureRegen;
 
 	CTextureReference m_yTexture;
 	CTextureReference m_cbTexture;
@@ -213,7 +212,7 @@ private:
 	IDirectSoundNotify *m_directSoundNotify;
 	HANDLE m_endEventHandle;
 	HANDLE m_halfwayEventHandle;
-	HANDLE m_overEventHandle;
+	HANDLE m_videoOverEventHandle;
 	ThreadHandle_t m_hBufferThreadHandle;
 #endif
 
