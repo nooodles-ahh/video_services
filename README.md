@@ -40,7 +40,7 @@ I may support AV1 in the future as I have been asked about.
 I have no plans to support anything other than Linux and Windows but this may incidentally become usable on other platforms that make use of SDL2.
 
 # Encoding compatible webms
-To encode a compatiable webm I would recommend using [WebmConverter](https://argorar.github.io/WebMConverter/), casually known as WebM for _Lazys_, as was specifically made for encoding webms with as little effort as possible.
+To encode a compatiable webm I would recommend using [WebmConverter](https://argorar.github.io/WebMConverter/), casually known as WebM for _Lazys_, as it was specifically made for encoding webms with as little effort as possible.
 While slower to encode you will probably want to be using VP9 and Opus for the best results, you will also need to ensure that the pixel format is YUV420 as other formats are not currently supported. WebmConverter does this by default, but you need to make sure this is done if you're using another encoding program such as FFmpeg or HandBrake.
 
 # Building
