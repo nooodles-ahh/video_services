@@ -20,6 +20,7 @@ $Configuration
 		$AdditionalIncludeDirectories		"$BASE;$SRCDIR\video_services\includes\SDL2\" [$SDL]
 		$PreprocessorDefinitions			"$BASE;MPI;PROTECTED_THINGS_DISABLE"
 		$TreatWarningsAsErrors				"No (/WX-)"
+		$EnableC++Exceptions				"Yes With SEH Exceptions (/EHa)" [$WIN32]
 	}
 
 	$Linker

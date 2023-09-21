@@ -150,7 +150,7 @@ public:
 	virtual void				GetVideoImageSize( int *pWidth, int *pHeight );
 
 #ifdef _WIN32
-	static unsigned _HandleBufferUpdates( void* params );
+	static unsigned int HandleBufferUpdates(void *params);
 #endif
 
 private:
@@ -206,11 +206,15 @@ private:
 
 	SDL_AudioStream *m_pSDLAudioStream;
 #elif _WIN32
-	IDirectSound8* m_pAudioDevice;
+	IDirectSound* m_pAudioDevice;
 	IDirectSoundBuffer* m_pAudioBuffer;
 
-	CThreadMutex m_SoundBufferLock;
-	ThreadHandle_t m_hSoundBufferThreadHandle;
+	CThreadMutex m_mutex;
+	IDirectSoundNotify *m_directSoundNotify;
+	HANDLE m_endEventHandle;
+	HANDLE m_halfwayEventHandle;
+	HANDLE m_overEventHandle;
+	ThreadHandle_t m_hBufferThreadHandle;
 #endif
 
 	bool m_soundKilled;

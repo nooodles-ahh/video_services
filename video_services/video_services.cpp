@@ -201,7 +201,6 @@ IVideoMaterial *CVideoServices::CreateVideoMaterial( const char *pMaterialName, 
 		delete pMaterial;
 		return nullptr;
 	}
-
 	// We may have more than one video playing at a time
 	m_vecVideos.AddToTail( pMaterial );
 	return pMaterial;
@@ -209,10 +208,11 @@ IVideoMaterial *CVideoServices::CreateVideoMaterial( const char *pMaterialName, 
 
 VideoResult_t CVideoServices::DestroyVideoMaterial( IVideoMaterial *pVideoMaterial )
 {
-	int idx = m_vecVideos.Find( pVideoMaterial );
+	CVideoMaterial *pCVideoMaterial = (CVideoMaterial *)pVideoMaterial;
+	int idx = m_vecVideos.Find( pCVideoMaterial );
 	if ( idx != -1 )
 	{
-		delete pVideoMaterial;
+		delete pCVideoMaterial;
 		m_vecVideos.Remove( idx );
 		return VideoResult_t::SUCCESS;
 	}
@@ -233,7 +233,7 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 {
 #ifdef _WIN32
 	// sound device on windows is either not created or not passed until somepoint later during start up
-	if ( FAILED( DirectSoundCreate8( NULL, &m_pSoundDevice, NULL ) ) )
+	if ( FAILED( DirectSoundCreate( NULL, &m_pSoundDevice, NULL ) ) )
 		return VideoResult_t::AUDIO_ERROR_OCCURED;
 
 	m_pSoundDevice->SetCooperativeLevel( (HWND)mainWindow, DSSCL_PRIORITY );
@@ -349,7 +349,6 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 		{
 			m_vecVideos[vid]->SoundDeviceCommand( operation, m_pSoundDevice, pData );
 		}
-
 		return VideoResult_t::SUCCESS;
 	}
 #elif _LINUX

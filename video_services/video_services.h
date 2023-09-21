@@ -14,6 +14,8 @@
 #include "SDL2/SDL_audio.h"
 #endif
 
+class CVideoMaterial;
+
 //---------------------------------------------------------
 // Video Services
 //---------------------------------------------------------
@@ -89,16 +91,19 @@ public:
 	// Get the (localized) name of a codec as a string
 	virtual const wchar_t *GetCodecName( VideoEncodeCodec_t nCodec );
 
-private:
-	int m_iUniqueVideoID;
 
-	CUtlVector< IVideoMaterial *> m_vecVideos;
+public:
+	// being lazy here
+	CUtlVector< CVideoMaterial*> m_vecVideos;
+
+private:
 #ifdef _WIN32
-	IDirectSound8 *m_pSoundDevice;
+	IDirectSound *m_pSoundDevice;
 #elif _LINUX
 	SDL_AudioSpec *m_pSoundDevice;
 #else
 	void *m_pSoundDevice;
 #endif
+	int m_iUniqueVideoID;
 };
 #endif
