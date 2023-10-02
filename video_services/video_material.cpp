@@ -37,7 +37,7 @@ void CYUVTextureRegenerator<Channel>::RegenerateTextureBits( ITexture *pTexture,
 	unsigned char *imageData = pVTFTexture->ImageData();
 	int rowSize = pVTFTexture->RowSizeInBytes( 0 );
 
-	if ( m_decodedImage )
+	if ( m_decodedImage && m_decodedImage->chromaShiftW == 1 && m_decodedImage->chromaShiftH == 1 )
 	{
 		unsigned char *pixels = m_decodedImage->planes[ Channel ];
 		int lineSize = m_decodedImage->linesize[ Channel ];
@@ -47,6 +47,7 @@ void CYUVTextureRegenerator<Channel>::RegenerateTextureBits( ITexture *pTexture,
 			imageData += rowSize;
 			pixels += lineSize;
 		}
+		m_decodedImage = nullptr;
 	}
 }
 
@@ -273,12 +274,9 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 
 	// if we have the losefocus cvar determine if we want to remove the global focus flag
 	dsbd.dwFlags = DSBCAPS_CTRLVOLUME | DSBCAPS_CTRLPAN | DSBCAPS_LOCSOFTWARE | DSBCAPS_CTRLPOSITIONNOTIFY | DSBCAPS_GLOBALFOCUS;
-	ConVar* snd_mute_losefocus = g_pCVar->FindVar( "snd_mute_losefocus" );
-	if ( snd_mute_losefocus )
-	{
-		if ( snd_mute_losefocus->GetBool() )
-			dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
-	}
+	ConVarRef snd_mute_losefocus( "snd_mute_losefocus" );
+	if ( snd_mute_losefocus.GetBool() )
+		dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
 
 	m_nAudioBufferSize = BUFFER_SIZE;
 	m_nBytesPerSample = waveFormat.nBlockAlign;
@@ -819,15 +817,19 @@ bool CVideoMaterial::Update()
 			// TODO figure out how to skip frames
 			m_videoDecoder->decode( *m_videoFrames.Head() );
 
-			if ( m_videoDecoder->getImage( *m_image ) == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR )
+			VPXDecoder::IMAGE_ERROR err;
+			if ( ( err = m_videoDecoder->getImage( *m_image ) ) != VPXDecoder::NO_FRAME )
 			{
-				m_yTextureRegen->m_decodedImage = m_image;
-				m_crTextureRegen->m_decodedImage = m_image;
-				m_cbTextureRegen->m_decodedImage = m_image;
+				if ( err == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR )
+				{
+					m_yTextureRegen->m_decodedImage = m_image;
+					m_crTextureRegen->m_decodedImage = m_image;
+					m_cbTextureRegen->m_decodedImage = m_image;
 
-				m_yTexture->Download();
-				m_crTexture->Download();
-				m_cbTexture->Download();
+					m_yTexture->Download();
+					m_crTexture->Download();
+					m_cbTexture->Download();
+				}
 			}
 			m_videoTime = m_videoFrames.Head()->time;
 			m_currentFrame++;
