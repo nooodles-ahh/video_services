@@ -480,7 +480,9 @@ void CVideoMaterial::DestroySoundBuffer()
 
 #ifdef _LINUX
 	if ( m_pSDLAudioStream )
+	{
 		SDL_FreeAudioStream( m_pSDLAudioStream );
+	}
 	m_pSDLAudioStream = nullptr;
 	m_pAudioBuffer = nullptr;
 	m_soundKilled = true;

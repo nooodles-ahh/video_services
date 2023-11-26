@@ -321,7 +321,7 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 
 	DestroyVideoMaterial( videoMaterial );
 
-	// clear so incase we have another video of a differing aspect ratio lined up
+	// clear incase we have another video with a different aspect ratio lined up
 	pRenderContext->ClearBuffers( true, false, false );
 
 #ifdef _WIN32
@@ -366,12 +366,16 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 		// update videos with the new sound device
 		FOR_EACH_VEC( m_vecVideos, vid )
 			m_vecVideos[vid]->SoundDeviceCommand( operation, m_pSoundDevice, pData );
+
+		return VideoResult_t::SUCCESS;
 	}
 	// Seemingly the SDL_AudioSpec callback without userdata
 	else if( operation == VideoSoundDeviceOperation_t::SDLMIXER_CALLBACK )
 	{
 		FOR_EACH_VEC( m_vecVideos, vid )
 			m_vecVideos[vid]->SoundDeviceCommand( operation, pDevice, pData );
+
+		return VideoResult_t::SUCCESS;
 	}
 #endif
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
