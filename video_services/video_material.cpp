@@ -699,12 +699,6 @@ bool CVideoMaterial::Update()
 				return false;
 			}
 		}
-#ifdef _WIN32
-		else if ( m_pAudioBuffer )
-		{
-			IDirectSoundBuffer_Stop( m_pAudioBuffer );
-		}
-#endif
 	}
 
 	// if we have audio check if we should update the buffer and make sure we're playing

@@ -53,7 +53,7 @@ public:
 	{
 		if ( !m_file )
 			return -1;
-		const off_t pos = ftell( m_file );
+		const long pos = ftell( m_file );
 		fseek( m_file, 0, SEEK_END );
 		if ( total )
 			*total = ftell( m_file );
