@@ -12,6 +12,7 @@
 #include "OpusVorbisDecoder.hpp"
 #include "VPXDecoder.hpp"
 #include <mkvparser/mkvparser.h>
+#include "filesystem.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -31,40 +32,42 @@ class MkvReader : public mkvparser::IMkvReader
 {
 public:
 	MkvReader( const char *filePath ) :
-		m_file( fopen( filePath, "rb" ) )
+		m_fileHandle( g_pFullFileSystem->Open( filePath, "rb" ) )
 	{}
+
 	~MkvReader()
 	{
-		if ( m_file )
-			fclose( m_file );
+		if ( m_fileHandle != FILESYSTEM_INVALID_HANDLE )
+			g_pFullFileSystem->Close( m_fileHandle );
 	}
 
 	int Read( long long pos, long len, unsigned char *buf )
 	{
-		if ( !m_file )
+		if ( m_fileHandle == FILESYSTEM_INVALID_HANDLE )
 			return -1;
-		fseek( m_file, pos, SEEK_SET );
-		const size_t size = fread( buf, 1, len, m_file );
-		if ( size < size_t( len ) )
+
+		g_pFullFileSystem->Seek( m_fileHandle, pos, FILESYSTEM_SEEK_HEAD );
+		const int size = g_pFullFileSystem->Read( buf, len, m_fileHandle );
+		if ( size < len )
 			return -1;
 		return 0;
 	}
 	int Length( long long *total, long long *available )
 	{
-		if ( !m_file )
+		if ( m_fileHandle == FILESYSTEM_INVALID_HANDLE )
 			return -1;
-		const long pos = ftell( m_file );
-		fseek( m_file, 0, SEEK_END );
+		const int pos = g_pFullFileSystem->Tell( m_fileHandle );
+		g_pFullFileSystem->Seek( m_fileHandle, 0, FILESYSTEM_SEEK_TAIL );
 		if ( total )
-			*total = ftell( m_file );
+			*total = g_pFullFileSystem->Tell( m_fileHandle );
 		if ( available )
-			*available = ftell( m_file );
-		fseek( m_file, pos, SEEK_SET );
+			*available = g_pFullFileSystem->Tell( m_fileHandle );
+		g_pFullFileSystem->Seek( m_fileHandle, pos, FILESYSTEM_SEEK_HEAD );
 		return 0;
 	}
 
 private:
-	FILE *m_file;
+	FileHandle_t m_fileHandle;
 };
 
 template <YUVChannel_t Channel>

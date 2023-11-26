@@ -173,7 +173,7 @@ VideoResult_t CVideoServices::LocatePlayableVideoFile( const char *pSearchFileNa
 	if ( !g_pFullFileSystem->FileExists( pSearchFileName, pPathID ) )
 		return VideoResult_t::VIDEO_FILE_NOT_FOUND;
 
-	g_pFullFileSystem->RelativePathToFullPath( pSearchFileName, pPathID, pPlaybackFileName, fileNameMaxLen );
+	Q_strncpy( pPlaybackFileName, pSearchFileName, fileNameMaxLen );
 	return VideoResult_t::SUCCESS;
 }
 
