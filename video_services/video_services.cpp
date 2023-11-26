@@ -294,11 +294,11 @@ VideoResult_t CVideoServices::PlayVideoFileFullScreen( const char *pFileName, co
 			break;
 
 #elif _LINUX
-		g_pLauncherMgr->PumpWindowsMessageLoop(); //0x38 on OSX
+		g_pLauncherMgr->PumpWindowsMessageLoop();
 
 		// keyboard events
 		bool bEsc, bReturn, bSpace;
-		bSpace = false; // only space isn't initialised?
+		bEsc = bReturn = bSpace = false;
 
 		// I can't believe that someone made a function JUST to get these keys
 		g_pLauncherMgr->PeekAndRemoveKeyboardEvents( &bEsc, &bReturn, &bSpace );
