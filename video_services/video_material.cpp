@@ -43,7 +43,7 @@ void CYUVTextureRegenerator<Channel>::RegenerateTextureBits( ITexture *pTexture,
 		int lineSize = m_decodedImage->linesize[ Channel ];
 		for ( int y = 0; y < m_videoHeight; ++y )
 		{
-			Q_memcpy( imageData, pixels, m_videoWidth );
+			V_memcpy( imageData, pixels, m_videoWidth );
 			imageData += rowSize;
 			pixels += lineSize;
 		}
@@ -183,7 +183,7 @@ CVideoMaterial::~CVideoMaterial()
 
 bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFileName, void *pSoundDevice )
 {
-	Q_strncpy( m_videoPath, pVideoFileName, sizeof( m_videoPath ) );
+	V_strncpy( m_videoPath, pVideoFileName, sizeof( m_videoPath ) );
 	m_mkvReader = new MkvReader( m_videoPath );
 	if ( !m_mkvReader )
 		return false;
@@ -257,7 +257,7 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 	m_pAudioDevice = ( IDirectSound* )pSoundDevice;
 
 	WAVEFORMATEX waveFormat;
-	Q_memset( &waveFormat, 0, sizeof( WAVEFORMATEX ) );
+	V_memset( &waveFormat, 0, sizeof( WAVEFORMATEX ) );
 	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
 	waveFormat.nChannels = m_demuxer->getChannels();
 	waveFormat.nSamplesPerSec = m_demuxer->getSampleRate();
@@ -267,7 +267,7 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 	waveFormat.cbSize = 0;
 
 	DSBUFFERDESC dsbd;
-	Q_memset( &dsbd, 0, sizeof( DSBUFFERDESC ) );
+	V_memset( &dsbd, 0, sizeof( DSBUFFERDESC ) );
 	dsbd.dwSize = sizeof( DSBUFFERDESC );
 	dsbd.dwBufferBytes = BUFFER_SIZE;
 	dsbd.lpwfxFormat = &waveFormat;
@@ -295,7 +295,7 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 		return false;
 
 	DSBPOSITIONNOTIFY posNotify[ 2 ];
-	Q_memset( &posNotify, 0, sizeof( posNotify ) );
+	V_memset( &posNotify, 0, sizeof( posNotify ) );
 
 	// create nofitication
 	m_endEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
@@ -321,11 +321,11 @@ void CVideoMaterial::CreateVideoMaterial( const char* pMaterialName )
 	// ---------------------------
 	// texture
 	char ytexture[ MAX_PATH ];
-	Q_snprintf( ytexture, MAX_PATH, "%s_y", pMaterialName );
+	V_snprintf( ytexture, MAX_PATH, "%s_y", pMaterialName );
 	char crtexture[ MAX_PATH ];
-	Q_snprintf( crtexture, MAX_PATH, "%s_cr", pMaterialName );
+	V_snprintf( crtexture, MAX_PATH, "%s_cr", pMaterialName );
 	char cbtexture[ MAX_PATH ];
-	Q_snprintf( cbtexture, MAX_PATH, "%s_cb", pMaterialName );
+	V_snprintf( cbtexture, MAX_PATH, "%s_cb", pMaterialName );
 
 	int tex_flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_PROCEDURAL |
 		TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_SINGLECOPY;
@@ -766,7 +766,7 @@ bool CVideoMaterial::Update()
 			DWORD dwAudioBytes1;
 			IDirectSoundBuffer_Lock( m_pAudioBuffer, m_nAudioBufferWriteOffset, nBytesRead, &pAudioPtr, &dwAudioBytes1, NULL, NULL, 0 );
 
-			Q_memcpy( pAudioPtr, m_pcm, nBytesRead );
+			V_memcpy( pAudioPtr, m_pcm, nBytesRead );
 			m_nAudioBufferWriteOffset += nBytesRead;
 
 			IDirectSoundBuffer_Unlock( m_pAudioBuffer, pAudioPtr, dwAudioBytes1, NULL, NULL );
@@ -777,7 +777,7 @@ bool CVideoMaterial::Update()
 				m_nAudioBufferWriteOffset = 0;
 				IDirectSoundBuffer_Lock( m_pAudioBuffer, 0, nBytesRead, &pAudioPtr, &dwAudioBytes1, NULL, NULL, 0 );
 
-				Q_memcpy( pAudioPtr, ( char* )( m_pcm )+nPCMOverflowOffset, nPCMOverflowSize );
+				V_memcpy( pAudioPtr, ( char* )( m_pcm )+nPCMOverflowOffset, nPCMOverflowSize );
 				m_nAudioBufferWriteOffset += nPCMOverflowSize;
 
 				IDirectSoundBuffer_Unlock( m_pAudioBuffer, pAudioPtr, dwAudioBytes1, NULL, NULL );

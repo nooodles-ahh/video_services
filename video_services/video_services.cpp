@@ -157,7 +157,7 @@ VideoSystemFeature_t CVideoServices::GetSupportedFileExtensionFeatures( VideoSys
 
 VideoSystem_t CVideoServices::LocateVideoSystemForPlayingFile( const char *pFileName, VideoSystemFeature_t playMode )
 {
-	if ( Q_GetFileExtension( pFileName ) && !Q_strcmp( Q_GetFileExtension( pFileName ), "webm" ) )
+	if ( V_GetFileExtension( pFileName ) && !V_strcmp( V_GetFileExtension( pFileName ), "webm" ) )
 	{
 		return VideoSystem_t::WEBM;
 	}
@@ -173,7 +173,7 @@ VideoResult_t CVideoServices::LocatePlayableVideoFile( const char *pSearchFileNa
 	if ( !g_pFullFileSystem->FileExists( pSearchFileName, pPathID ) )
 		return VideoResult_t::VIDEO_FILE_NOT_FOUND;
 
-	Q_strncpy( pPlaybackFileName, pSearchFileName, fileNameMaxLen );
+	V_strncpy( pPlaybackFileName, pSearchFileName, fileNameMaxLen );
 	return VideoResult_t::SUCCESS;
 }
 
@@ -182,10 +182,10 @@ IVideoMaterial *CVideoServices::CreateVideoMaterial( const char *pMaterialName, 
 {
 	char sVideoPath[MAX_PATH];
 	char sVideoFilename[MAX_PATH];
-	Q_strncpy( sVideoFilename, pVideoFileName, sizeof( sVideoFilename ) );
+	V_strncpy( sVideoFilename, pVideoFileName, sizeof( sVideoFilename ) );
 	// TODO; Allow mkv's?
 	// just look for a webm, there's nothing else.
-	Q_SetExtension( sVideoFilename, "webm", sizeof( sVideoFilename ) );
+	V_SetExtension( sVideoFilename, "webm", sizeof( sVideoFilename ) );
 
 	// find playable file
 	if ( LocatePlayableVideoFile( sVideoFilename, pPathID, nullptr, sVideoPath, MAX_PATH ) != VideoResult_t::SUCCESS )
@@ -361,7 +361,7 @@ VideoResult_t CVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 
 		// need a copy of the SDL_AudioSpec
 		m_pSoundDevice = new SDL_AudioSpec();
-		Q_memcpy(m_pSoundDevice, pData, sizeof(SDL_AudioSpec));
+		V_memcpy(m_pSoundDevice, pData, sizeof(SDL_AudioSpec));
 
 		// update videos with the new sound device
 		FOR_EACH_VEC( m_vecVideos, vid )
