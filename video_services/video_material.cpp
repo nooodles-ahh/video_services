@@ -97,10 +97,6 @@ CVideoMaterial::CVideoMaterial()
 	m_crTextureRegen = nullptr;
 	m_cbTextureRegen = nullptr;
 
-	m_nAudioBufferWriteOffset = 0;
-	m_nAudioBufferReadOffset = 0;
-
-	m_nAudioBufferSize = 0;
 	m_nBytesPerSample = 0;
 	m_nAudioBufferFilledSize = 0;
 
@@ -109,6 +105,8 @@ CVideoMaterial::CVideoMaterial()
 #ifdef _LINUX
 	m_pSDLAudioStream = nullptr;
 #elif _WIN32
+	m_nAudioBufferSize = 0;
+	m_nAudioBufferWriteOffset = 0;
 	m_directSoundNotify = nullptr;
 	m_endEventHandle = nullptr;
 	m_halfwayEventHandle = nullptr;
@@ -234,9 +232,6 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 	// this is a copy recieved from services so we don't need to allocate it
 	m_pAudioDevice = ( SDL_AudioSpec* )pSoundDevice;
 	m_nBytesPerSample = m_pAudioDevice->channels * ( SDL_AUDIO_BITSIZE( m_pAudioDevice->format ) / 8 );
-
-	//Calculate buffer size
-	m_nAudioBufferSize = BUFFER_SIZE;
 
 	// if SDL2 version is greater or equal to 2.0.7 enable SDL_AudioStream
 	SDL_version ver;
@@ -638,15 +633,15 @@ void CVideoMaterial::RestartVideo()
 	m_demuxer->resetVideo();
 	m_curTime = m_videoTime = 0.0;
 	m_prevTicks = Plat_MSTime();
-#ifdef _WIN32
 	if ( m_pAudioBuffer && !m_soundKilled )
 	{
-		m_pAudioBuffer->SetCurrentPosition( 0 );
-		m_nAudioBufferFilledSize = 0;
-		m_nAudioBufferWriteOffset = 0;
+#ifdef _WIN32
 		IDirectSoundBuffer_Stop( m_pAudioBuffer );
-	}
+		m_pAudioBuffer->SetCurrentPosition( 0 );
+		m_nAudioBufferWriteOffset = 0;
 #endif
+		m_nAudioBufferFilledSize = 0;
+	}
 }
 
 bool CVideoMaterial::Update()

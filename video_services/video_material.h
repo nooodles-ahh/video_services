@@ -211,6 +211,9 @@ private:
 	IDirectSound* m_pAudioDevice;
 	IDirectSoundBuffer* m_pAudioBuffer;
 
+	int m_nAudioBufferWriteOffset;
+	int m_nAudioBufferSize;
+
 	CThreadMutex m_mutex;
 	IDirectSoundNotify *m_directSoundNotify;
 	HANDLE m_endEventHandle;
@@ -221,11 +224,8 @@ private:
 
 	bool m_soundKilled;
 	short* m_pcm;
-	int m_nAudioBufferWriteOffset;
-	int m_nAudioBufferReadOffset;
 	int m_nAudioBufferFilledSize;
 
-	int m_nAudioBufferSize;
 	int m_nBytesPerSample;
 };
 
