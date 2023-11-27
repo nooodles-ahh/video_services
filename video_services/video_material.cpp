@@ -640,7 +640,12 @@ void CVideoMaterial::RestartVideo()
 	m_prevTicks = Plat_MSTime();
 #ifdef _WIN32
 	if ( m_pAudioBuffer && !m_soundKilled )
+	{
 		m_pAudioBuffer->SetCurrentPosition( 0 );
+		m_nAudioBufferFilledSize = 0;
+		m_nAudioBufferWriteOffset = 0;
+		IDirectSoundBuffer_Stop( m_pAudioBuffer );
+	}
 #endif
 }
 
