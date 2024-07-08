@@ -66,7 +66,6 @@ CVideoMaterial::CVideoMaterial()
 	m_demuxer = nullptr;
 	m_videoDecoder = nullptr;
 	m_audioDecoder = nullptr;
-	m_audioFrame = new WebMFrame();
 	m_image = new VPXDecoder::Image();
 	m_pcm = nullptr;
 
@@ -118,36 +117,16 @@ CVideoMaterial::~CVideoMaterial()
 {
 	m_videoEnded = true;
 	m_videoStopped = true;
-	m_videoFrames.Purge();
+	//m_videoFrames.Purge();
+	// for each frame in the queue free the buffer
+	while (!m_videoFrames.IsEmpty())
+	{
+		WebMFrame frame = m_videoFrames.RemoveAtHead();
+		if ( frame.buffer )
+			free( frame.buffer );
+	}
 
 	DestroySoundBuffer();
-
-	// Often the same video material is used over and over, so unless you completely rid of it issues arise. 
-	// I don't know how much of this is necessary anymore now that it actually dies, but better safe than sorry
-
-	if ( m_crTexture.IsValid() )
-	{
-		m_crTexture->SetTextureRegenerator( nullptr );
-		m_crTexture.Shutdown( true );
-	}
-	if ( m_cbTexture.IsValid() )
-	{
-		m_cbTexture->SetTextureRegenerator( nullptr );
-		m_cbTexture.Shutdown( true );
-	}
-	if ( m_yTexture.IsValid() )
-	{
-		m_yTexture->SetTextureRegenerator( nullptr );
-		m_yTexture.Shutdown( true );
-	}
-
-	//delete m_crTexture;
-	//delete m_cbTexture;
-	//delete m_yTexture;
-
-	delete m_yTextureRegen;
-	delete m_crTextureRegen;
-	delete m_cbTextureRegen;
 
 	IMaterial* material = m_videoMaterial;
 	m_videoMaterial.Shutdown();
@@ -158,6 +137,13 @@ CVideoMaterial::~CVideoMaterial()
 	// kill it if it remains
 	if ( material )
 		material->DeleteIfUnreferenced();
+
+	if (m_crTexture.IsValid())
+		m_crTexture.Shutdown(true);
+	if (m_cbTexture.IsValid())
+		m_cbTexture.Shutdown(true);
+	if (m_yTexture.IsValid())
+		m_yTexture.Shutdown(true);
 
 #ifdef _WIN32
 	if ( m_endEventHandle )
@@ -175,7 +161,6 @@ CVideoMaterial::~CVideoMaterial()
 	delete m_demuxer;
 	delete m_mkvReader;
 
-	delete m_audioFrame;
 	delete m_pAudioBuffer;
 }
 
@@ -494,16 +479,24 @@ void CVideoMaterial::DestroySoundBuffer()
 	{
 		IDirectSound* pDSInterface = nullptr;
 		IDirectSoundBuffer* pDSBufferInterface = nullptr;
+		bool succeeded = false;
 		if ( SUCCEEDED( m_pAudioDevice->QueryInterface( IID_IDirectSound, ( void** )&pDSInterface ) ) &&
 			SUCCEEDED( m_pAudioBuffer->QueryInterface( IID_IDirectSoundBuffer, ( void** )&pDSBufferInterface ) ) )
 		{
 			IDirectSoundBuffer_Stop( m_pAudioBuffer );
-			IDirectSoundBuffer_Release( m_pAudioBuffer );
+			succeeded = true;
 		}
+
+		int refCount = 0;
+
 		if ( pDSBufferInterface )
-			pDSBufferInterface->Release();
-		if ( pDSInterface )
-			pDSInterface->Release();
+			refCount = pDSBufferInterface->Release();
+		if(succeeded)
+			refCount = IDirectSoundBuffer_Release( m_pAudioBuffer );
+		if (pDSInterface)
+			refCount = pDSInterface->Release();
+
+		Assert(refCount == 1);
 	}
 	m_pAudioBuffer = nullptr;
 	m_soundKilled = true;
@@ -618,7 +611,7 @@ bool CVideoMaterial::NeedNewFrame( double curtime )
 	if ( m_videoFrames.Count() == 0 )
 		return true;
 
-	if ( m_videoFrames.Tail()->time <= curtime )
+	if ( m_videoFrames.Tail().time <= curtime )
 		return true;
 
 	if( m_pAudioBuffer && m_nAudioBufferFilledSize < BUFFER_FILLED_MIN )
@@ -642,6 +635,10 @@ void CVideoMaterial::RestartVideo()
 #endif
 		m_nAudioBufferFilledSize = 0;
 	}
+}
+
+void CVideoMaterial::UpdateSoundBuffer()
+{
 }
 
 bool CVideoMaterial::Update()
@@ -720,29 +717,26 @@ bool CVideoMaterial::Update()
 	// Read until we've filled the buffer or got enough frames
 	while ( NeedNewFrame( m_curTime ) || bNeedUpdate )
 	{
-		WebMFrame* video_frame = new WebMFrame();
+		WebMFrame video_frame, audio_frame;
 		// did we reach the EOS
-		if ( !m_demuxer->readFrame( video_frame, m_audioFrame ) )
+		if ( !m_demuxer->readFrame( &video_frame, &audio_frame) )
 		{
 			bNeedUpdate = false;
-			delete video_frame;
 			break;
 		}
-		else if ( !video_frame->isValid() )
-		{
-			delete video_frame;
-		}
-		else
+		else if ( video_frame.isValid() )
 		{
 			m_videoFrames.Insert( video_frame );
 		}
 
+		UpdateSoundBuffer();
+
 		bNeedUpdate = false;
-		if ( m_audioFrame->isValid() && m_pAudioBuffer )
+		if (audio_frame.isValid() && m_pAudioBuffer )
 		{
 			int numOutSamples = 0;
 			
-			m_audioDecoder->getPCMS16( *m_audioFrame, m_pcm, numOutSamples );
+			m_audioDecoder->getPCMS16( audio_frame, m_pcm, numOutSamples );
 			if ( numOutSamples == 0 )
 				continue;
 
@@ -787,10 +781,13 @@ bool CVideoMaterial::Update()
 #endif
 
 			// if our timer is waayyy ahead set it back to the audio time
-			if ( m_curTime > m_audioFrame->time )
+			if ( m_curTime > audio_frame.time )
 			{
-				m_curTime = m_audioFrame->time;
+				m_curTime = audio_frame.time;
 			}
+
+			if (audio_frame.buffer)
+				free(audio_frame.buffer);
 		}
 	}
 
@@ -800,7 +797,7 @@ bool CVideoMaterial::Update()
 		// if our current time is out, roll it back
 		// Noodles; I feel this will cause issues, but it seems fine right now
 		double frameDur = 1.0 / m_frameRate.GetFPS();
-		if ( m_videoFrames.Count() > 0 && ( m_curTime - m_videoFrames.Head()->time ) > ( frameDur * 6.0 ) )
+		if ( m_videoFrames.Count() > 0 && ( m_curTime - m_videoFrames.Head().time ) > ( frameDur * 6.0 ) )
 		{
 			m_curTime = m_videoTime - frameDur;
 		}
@@ -808,10 +805,10 @@ bool CVideoMaterial::Update()
 
 	while ( m_videoFrames.Count() > 0 && m_curTime >= m_videoTime )
 	{
-		if ( m_videoFrames.Head()->isValid() )
+		if ( m_videoFrames.Head().isValid() )
 		{
 			// TODO figure out how to skip frames
-			m_videoDecoder->decode( *m_videoFrames.Head() );
+			m_videoDecoder->decode( m_videoFrames.Head() );
 
 			VPXDecoder::IMAGE_ERROR err;
 			if ( ( err = m_videoDecoder->getImage( *m_image ) ) != VPXDecoder::NO_FRAME )
@@ -827,13 +824,14 @@ bool CVideoMaterial::Update()
 					m_cbTexture->Download();
 				}
 			}
-			m_videoTime = m_videoFrames.Head()->time;
+			m_videoTime = m_videoFrames.Head().time;
 			m_currentFrame++;
 		}
 
-		WebMFrame *frame = m_videoFrames.RemoveAtHead();
-		if( frame )
-			delete frame;
+		// you are responsible for freeing the buffer
+		WebMFrame frame = m_videoFrames.RemoveAtHead();
+		if (frame.buffer)
+			free(frame.buffer);
 	}
 	
 	return true;

@@ -7,6 +7,7 @@
 #include "materialsystem/itexture.h"
 #include "materialsystem/MaterialSystemUtil.h"
 #include "video/ivideoservices.h"
+#include "WebMDemuxer.hpp"
 #include "tier1/utlqueue.h"
 
 #include "OpusVorbisDecoder.hpp"
@@ -37,8 +38,11 @@ public:
 
 	~MkvReader()
 	{
-		if ( m_fileHandle != FILESYSTEM_INVALID_HANDLE )
-			g_pFullFileSystem->Close( m_fileHandle );
+		if (m_fileHandle != FILESYSTEM_INVALID_HANDLE)
+		{
+			g_pFullFileSystem->Close(m_fileHandle);
+			g_pFullFileSystem->Flush(m_fileHandle);
+		}
 	}
 
 	int Read( long long pos, long len, unsigned char *buf )
@@ -152,6 +156,7 @@ public:
 
 #ifdef _WIN32
 	static unsigned int HandleBufferUpdates(void *params);
+	void UpdateSoundBuffer();
 #endif
 
 private:
@@ -167,7 +172,6 @@ private:
 	WebMDemuxer *m_demuxer;
 	VPXDecoder *m_videoDecoder;
 	OpusVorbisDecoder *m_audioDecoder;
-	WebMFrame *m_audioFrame;
 	VideoFrameRate_t m_frameRate;
 	VPXDecoder::Image *m_image;
 
@@ -200,7 +204,7 @@ private:
 
 	unsigned int m_prevTicks;
 	unsigned int m_currentFrame;
-	CUtlQueue< WebMFrame*> m_videoFrames;
+	CUtlQueue<WebMFrame> m_videoFrames;
 
 #ifdef _LINUX
 	SDL_AudioSpec* m_pAudioDevice;

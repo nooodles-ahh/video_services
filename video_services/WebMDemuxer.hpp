@@ -42,8 +42,6 @@ namespace mkvparser {
 
 class WebMFrame
 {
-	WebMFrame(const WebMFrame &);
-	void operator =(const WebMFrame &);
 public:
 	WebMFrame();
 	~WebMFrame();

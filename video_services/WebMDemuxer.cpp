@@ -38,7 +38,6 @@ WebMFrame::WebMFrame() :
 {}
 WebMFrame::~WebMFrame()
 {
-	free(buffer);
 }
 
 /**/
