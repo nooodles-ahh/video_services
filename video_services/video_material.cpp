@@ -160,44 +160,67 @@ CVideoMaterial::~CVideoMaterial()
 	delete m_videoDecoder;
 	delete m_demuxer;
 	delete m_mkvReader;
-
-	delete m_pAudioBuffer;
 }
 
 bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFileName, void *pSoundDevice )
 {
-	V_strncpy( m_videoPath, pVideoFileName, sizeof( m_videoPath ) );
-	m_mkvReader = new MkvReader( m_videoPath );
-	if ( !m_mkvReader )
-		return false;
-
-	m_demuxer = new WebMDemuxer( m_mkvReader );
-	if ( !m_demuxer || !m_demuxer->isOpen() )
+	// Open the video file
+	m_mkvReader = new MkvReader(pVideoFileName);
+	if (!m_mkvReader->Loaded())
 	{
-		if ( m_demuxer )
-		{
-			delete m_mkvReader;
-			delete m_demuxer;
-			m_mkvReader = nullptr;
-			m_demuxer = nullptr;
-		}
-		return false;
+		ConWarning("Failed to open video file.\n");
+		goto failed;
+	}
+	V_strncpy( m_videoPath, pVideoFileName, sizeof( m_videoPath ) );
+
+	// Initialise the demuxer with our mkv reader
+	m_demuxer = new WebMDemuxer( m_mkvReader );
+	if (!m_demuxer->isOpen())
+	{
+		ConWarning("Failed to open video file for demuxing.\n");
+		goto failed;
 	}
 	
 	// assign the decoder a reasonable number of threads
 	const CPUInformation& cpuInfo = *GetCPUInformation();
 	unsigned int numthreads = clamp( cpuInfo.m_nLogicalProcessors - 2, 1, 8 );
 	m_videoDecoder = new VPXDecoder( *m_demuxer, numthreads );
-	m_audioDecoder = new OpusVorbisDecoder( *m_demuxer );
-	m_pcm = m_audioDecoder->isOpen() ? new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()] : NULL;
+	if (!m_videoDecoder->isOpen())
+	{
+		ConWarning("Failed to open VPX decoder\n");
+		goto failed;
+	}
+
+	// TODO - should these be cached?
 	m_videoWidth = m_demuxer->getWidth();
 	m_videoHeight = m_demuxer->getHeight();
-	// This is a guessed framerate from the first 50 frames 
+
+	// audio is optional so we don't need to error out if it fails
+	m_audioDecoder = new OpusVorbisDecoder( *m_demuxer );
+	if (m_audioDecoder->isOpen())
+	{
+		m_pcm = new short[m_audioDecoder->getBufferSamples() * m_demuxer->getChannels()];
+		if(!CreateSoundBuffer(pSoundDevice))
+			ConWarning("Failed to create sound buffer. Playing video anyway.\n");
+	}
+
+	// This is a guessed framerate from the first 50 frames
+	// TODO - remove this
 	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); 
 
-	CreateSoundBuffer( pSoundDevice );
-	CreateVideoMaterial( pMaterialName );
+	CreateVideoMaterial();
 	return true;
+
+	// cleanup
+failed:
+	if(m_videoDecoder)
+		delete m_videoDecoder;
+	if (m_demuxer)
+		delete m_demuxer;
+	if (m_mkvReader)
+		delete m_mkvReader;
+
+	return false;
 }
 
 bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
@@ -296,21 +319,26 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 	return true;
 }
 
-void CVideoMaterial::CreateVideoMaterial( const char* pMaterialName )
+void CVideoMaterial::CreateVideoMaterial()
 {
 	// ---------------------------
 	// texture
+
+	char szFileName[MAX_PATH];
+	V_StripExtension(m_videoPath, szFileName, sizeof(szFileName));
+
+	// names for our channel textures
 	char ytexture[ MAX_PATH ];
-	V_snprintf( ytexture, MAX_PATH, "%s_y", pMaterialName );
+	V_snprintf( ytexture, MAX_PATH, "%s_y", szFileName);
 	char crtexture[ MAX_PATH ];
-	V_snprintf( crtexture, MAX_PATH, "%s_cr", pMaterialName );
+	V_snprintf( crtexture, MAX_PATH, "%s_cr", szFileName);
 	char cbtexture[ MAX_PATH ];
-	V_snprintf( cbtexture, MAX_PATH, "%s_cb", pMaterialName );
+	V_snprintf( cbtexture, MAX_PATH, "%s_cb", szFileName);
 
-	int tex_flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_PROCEDURAL |
-		TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_SINGLECOPY;
+	const int tex_flags = TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP | 
+					TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY;
 
-	// need a power of 2 or weird things happen
+	// You can create non-power of 2 textures but weird things can happen so don't.
 	m_textureWidth = SmallestPowerOfTwoGreaterOrEqual( m_videoWidth );
 	m_textureHeight = SmallestPowerOfTwoGreaterOrEqual( m_videoHeight );
 
@@ -342,7 +370,7 @@ void CVideoMaterial::CreateVideoMaterial( const char* pMaterialName )
 	pVMTKeyValues->SetInt( "$vertexcolor", 1 );
 	pVMTKeyValues->SetInt( "$vertexalpha", 1 );
 	pVMTKeyValues->SetInt( "$nomip", 1 );
-	m_videoMaterial.Init( pMaterialName, pVMTKeyValues );
+	m_videoMaterial.Init(szFileName, pVMTKeyValues );
 
 	// Refresh the material vars because apparently init doesn't do this
 	// and retains the previous video's frame

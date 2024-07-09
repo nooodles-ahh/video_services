@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+// TODO - replace demuxer with the actual codec enum
 VPXDecoder::VPXDecoder(const WebMDemuxer &demuxer, unsigned threads) :
 	m_ctx(NULL),
 	m_iter(NULL),

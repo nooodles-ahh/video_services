@@ -45,6 +45,11 @@ public:
 		}
 	}
 
+	bool Loaded() const
+	{
+		return m_fileHandle != FILESYSTEM_INVALID_HANDLE;
+	}
+
 	int Read( long long pos, long len, unsigned char *buf )
 	{
 		if ( m_fileHandle == FILESYSTEM_INVALID_HANDLE )
@@ -164,7 +169,7 @@ private:
 	bool CreateSoundBuffer(void *pSoundDevice = nullptr);
 	void DestroySoundBuffer();
 	void RestartVideo();
-	void CreateVideoMaterial(const char *pMaterialName);
+	void CreateVideoMaterial();
 
 private:
 
