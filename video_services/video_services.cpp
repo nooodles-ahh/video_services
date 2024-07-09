@@ -89,8 +89,6 @@ LRESULT CVideoServices::VideoWndProc(HWND hWnd, UINT message, WPARAM wParam, LPA
 		}
 	}
 
-	ConMsg("VideoWndProc %d\n", message);
-
 	return CallWindowProc(g_pVideoServices.m_pOldWndProc, hWnd, message, wParam, lParam);
 }
 

@@ -219,7 +219,6 @@ private:
 
 	SDL_AudioStream *m_pSDLAudioStream;
 #elif _WIN32
-	IDirectSound* m_pAudioDevice;
 	IDirectSoundBuffer* m_pAudioBuffer;
 
 	int m_nAudioBufferWriteOffset;
