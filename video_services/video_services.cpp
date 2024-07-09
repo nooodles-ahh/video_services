@@ -33,6 +33,7 @@ CVideoServices::CVideoServices()
 {
 	m_pSoundDevice = nullptr;
 	m_iUniqueVideoID = 0;
+	m_pOldWndProc = nullptr;
 }
 
 CVideoServices::~CVideoServices()
@@ -74,6 +75,23 @@ void *CVideoServices::QueryInterface( const char *pInterfaceName )
 {
 	CreateInterfaceFn factory = Sys_GetFactoryThis();
 	return factory( pInterfaceName, nullptr );
+}
+
+LRESULT CVideoServices::VideoWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	// freeze all sound buffers for certain window messages
+	// TODO - pause the video itself?
+	if (message == WM_NCLBUTTONDOWN || message == WM_SYSCOMMAND || message == WM_SIZE || message == WM_MOVE )
+	{
+		FOR_EACH_VEC(g_pVideoServices.m_vecVideos, vid)
+		{
+			g_pVideoServices.m_vecVideos[vid]->FreezeSoundBuffer();
+		}
+	}
+
+	ConMsg("VideoWndProc %d\n", message);
+
+	return CallWindowProc(g_pVideoServices.m_pOldWndProc, hWnd, message, wParam, lParam);
 }
 
 // --------------------------------------------------------------------
@@ -180,6 +198,16 @@ VideoResult_t CVideoServices::LocatePlayableVideoFile( const char *pSearchFileNa
 IVideoMaterial *CVideoServices::CreateVideoMaterial( const char *pMaterialName, const char *pVideoFileName, const char *pPathID,
 	VideoPlaybackFlags_t playbackFlags, VideoSystem_t videoSystem, bool PlayAlternateIfNotAvailable )
 {
+	if (!m_pOldWndProc)
+	{
+		// get current window proc
+		m_pOldWndProc = (WNDPROC)GetWindowLongPtrW(GetActiveWindow(), GWLP_WNDPROC);
+
+		// set new window proc
+		SetWindowLongPtrW(GetActiveWindow(), GWLP_WNDPROC, (LONG_PTR)VideoWndProc);
+
+	}
+
 	char sVideoPath[MAX_PATH];
 	char sVideoFilename[MAX_PATH];
 	V_strncpy( sVideoFilename, pVideoFileName, sizeof( sVideoFilename ) );

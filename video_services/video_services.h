@@ -91,6 +91,10 @@ public:
 	// Get the (localized) name of a codec as a string
 	virtual const wchar_t *GetCodecName( VideoEncodeCodec_t nCodec );
 
+#ifdef _WIN32
+	static LRESULT VideoWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+#endif
+
 
 public:
 	// being lazy here
@@ -99,6 +103,7 @@ public:
 private:
 #ifdef _WIN32
 	IDirectSound *m_pSoundDevice;
+	WNDPROC m_pOldWndProc;
 #elif _LINUX
 	SDL_AudioSpec *m_pSoundDevice;
 #else

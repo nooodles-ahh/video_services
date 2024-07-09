@@ -159,8 +159,10 @@ public:
 	virtual void				GetVideoTexCoordRange( float *pMaxU, float *pMaxV );
 	virtual void				GetVideoImageSize( int *pWidth, int *pHeight );
 
+	// for stopping the sound buffer when the main thread gets interrupted
+	virtual void				FreezeSoundBuffer();
+
 #ifdef _WIN32
-	static unsigned int HandleBufferUpdates(void *params);
 	void UpdateSoundBuffer();
 #endif
 
@@ -222,13 +224,6 @@ private:
 
 	int m_nAudioBufferWriteOffset;
 	int m_nAudioBufferSize;
-
-	CThreadMutex m_mutex;
-	IDirectSoundNotify *m_directSoundNotify;
-	HANDLE m_endEventHandle;
-	HANDLE m_halfwayEventHandle;
-	HANDLE m_videoOverEventHandle;
-	ThreadHandle_t m_hBufferThreadHandle;
 #endif
 
 	bool m_soundKilled;

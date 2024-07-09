@@ -106,10 +106,6 @@ CVideoMaterial::CVideoMaterial()
 #elif _WIN32
 	m_nAudioBufferSize = 0;
 	m_nAudioBufferWriteOffset = 0;
-	m_directSoundNotify = nullptr;
-	m_endEventHandle = nullptr;
-	m_halfwayEventHandle = nullptr;
-	m_videoOverEventHandle = nullptr;
 #endif
 }
 
@@ -144,15 +140,6 @@ CVideoMaterial::~CVideoMaterial()
 		m_cbTexture.Shutdown(true);
 	if (m_yTexture.IsValid())
 		m_yTexture.Shutdown(true);
-
-#ifdef _WIN32
-	if ( m_endEventHandle )
-		CloseHandle( m_endEventHandle );
-	if ( m_halfwayEventHandle )
-		CloseHandle( m_halfwayEventHandle );
-	if ( m_videoOverEventHandle )
-		CloseHandle( m_videoOverEventHandle );
-#endif
 
 	delete m_pcm;
 	delete m_image;
@@ -293,27 +280,6 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 
 	m_pAudioBuffer->AddRef();
 	tempBuffer->Release();
-
-	if ( FAILED( IDirectSoundBuffer_QueryInterface( m_pAudioBuffer, IID_IDirectSoundNotify, ( LPVOID* )&m_directSoundNotify ) ) )
-		return false;
-
-	DSBPOSITIONNOTIFY posNotify[ 2 ];
-	V_memset( &posNotify, 0, sizeof( posNotify ) );
-
-	// create nofitication
-	m_endEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
-	m_halfwayEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
-	m_videoOverEventHandle = CreateEvent( NULL, FALSE, FALSE, NULL );
-
-	// notifcations at end and halfway mark
-	posNotify[ 0 ].dwOffset = BUFFER_SIZE - 1;
-	posNotify[ 0 ].hEventNotify = m_endEventHandle;
-	posNotify[ 1 ].dwOffset = ( BUFFER_SIZE / 2.0f ) - 1;
-	posNotify[ 1 ].hEventNotify = m_halfwayEventHandle;
-
-	IDirectSoundNotify_SetNotificationPositions( m_directSoundNotify, 2, posNotify );
-
-	m_hBufferThreadHandle = CreateSimpleThread( HandleBufferUpdates, this );
 #endif
 	m_soundKilled = false;
 	return true;
@@ -440,47 +406,6 @@ bool CVideoMaterial::IsFinishedPlaying()
 	return m_videoEnded;
 }
 
-#if _WIN32
-//-----------------------------------------------------------------------------
-// Purpose: Threaded function that pauses the sound buffer if it hasn't been updated in a while
-//-----------------------------------------------------------------------------
-unsigned int CVideoMaterial::HandleBufferUpdates( void* params )
-{	
-	CVideoMaterial* m = ( CVideoMaterial* )params;
-
-	HANDLE hEvents[ 3 ];
-	hEvents[ 0 ] = m->m_endEventHandle;
-	hEvents[ 1 ] = m->m_halfwayEventHandle;
-	hEvents[ 2 ] = m->m_videoOverEventHandle;
-	while ( true )
-	{
-		DWORD result = WaitForMultipleObjects( 3, hEvents, FALSE, INFINITE );
-		m->m_mutex.Lock();
-		switch ( result )
-		{
-		case WAIT_OBJECT_0:
-		case WAIT_OBJECT_0 + 1:
-		{
-			unsigned int curTicks = Plat_MSTime();
-			double timepassed = ( double )( curTicks - m->m_prevTicks ) / 1000.0;
-			if ( timepassed > FREEZE_TIME )
-				IDirectSoundBuffer_Stop( m->m_pAudioBuffer );
-			break;
-		}
-		case WAIT_OBJECT_0 + 2:
-			m->m_mutex.Unlock();
-			return 0;
-
-		default:
-			break;
-		}
-		m->m_mutex.Unlock();
-	}
-
-	return 0;
-}
-#endif
-
 void CVideoMaterial::DestroySoundBuffer()
 {
 	if ( !m_pAudioBuffer )
@@ -495,13 +420,6 @@ void CVideoMaterial::DestroySoundBuffer()
 	m_pAudioBuffer = nullptr;
 	m_soundKilled = true;
 #elif _WIN32
-
-	if ( m_hBufferThreadHandle )
-	{
-		SetEvent( m_videoOverEventHandle );
-		ThreadJoin( m_hBufferThreadHandle );
-		ReleaseThreadHandle( m_hBufferThreadHandle );
-	}
 
 	if ( !m_soundKilled )
 	{
@@ -972,4 +890,9 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	}
 #endif
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
+}
+
+void CVideoMaterial::FreezeSoundBuffer()
+{
+	m_pAudioBuffer->Stop();
 }
