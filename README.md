@@ -44,7 +44,7 @@ To encode a compatiable webm I would recommend using [WebmConverter](https://arg
 While slower to encode you will probably want to be using VP9 and Opus for the best results, you will also need to ensure that the pixel format is YUV420 as other formats are not currently supported. WebmConverter does this by default, but you need to make sure this is done if you're using another encoding program such as FFmpeg or HandBrake.
 
 # Building
-- Add `$Include "video_services\vpc_scripts\projects.vgc"` to `vpc_scripts\default.vgc` in your mod.
+- Add `$Include "video_services\vpc_scripts\projects.vgc"` to `vpc_scripts\projects.vgc` in your mod.
 - Include `video_services` in your project group
 - Regenerate the project and build
 - Copy the vpx library and the resulting video_services library into the relevant bin folder
