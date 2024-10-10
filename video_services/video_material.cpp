@@ -18,10 +18,10 @@
 #include "tier0/memdbgon.h"
 
 // about a second
-#define BUFFER_SIZE 196608
+//#define BUFFER_SIZE 196608
 // at minimim accomdate about an update every 125ms
-#define BUFFER_FILLED_MIN 4096 * 16
-#define FREEZE_TIME 0.125
+//#define BUFFER_FILLED_MIN 4096 * 16
+//#define FREEZE_TIME 0.125
 
 //=============================================================================
 // 
@@ -192,7 +192,7 @@ bool CVideoMaterial::LoadVideo( const char *pMaterialName, const char *pVideoFil
 
 	// This is a guessed framerate from the first 50 frames
 	// TODO - remove this
-	m_frameRate.SetFPS( m_demuxer->getFrameRate() ); 
+	//m_frameRate.SetFPS( m_demuxer->getFrameRate() ); 
 
 	CreateVideoMaterial();
 	return true;
@@ -256,7 +256,7 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 
 	DSBUFFERDESC dsbd{};
 	dsbd.dwSize = sizeof( DSBUFFERDESC );
-	dsbd.dwBufferBytes = BUFFER_SIZE;
+	dsbd.dwBufferBytes = waveFormat.nAvgBytesPerSec * 2.f;
 	dsbd.lpwfxFormat = &waveFormat;
 
 	// if we have the losefocus cvar determine if we want to remove the global focus flag
@@ -265,7 +265,7 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 	if ( snd_mute_losefocus.GetBool() )
 		dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
 
-	m_nAudioBufferSize = BUFFER_SIZE;
+	m_nAudioBufferSize = dsbd.dwBufferBytes;
 	m_nBytesPerSample = waveFormat.nBlockAlign;
 
 	IDirectSoundBuffer* tempBuffer = nullptr;
@@ -367,41 +367,6 @@ void CVideoMaterial::CreateVideoMaterial()
 	m_demuxer->resetVideo();
 }
 
-const char *CVideoMaterial::GetVideoFileName()
-{
-	return m_videoPath;
-}
-
-VideoResult_t CVideoMaterial::GetLastResult()
-{
-	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
-}
-
-VideoFrameRate_t &CVideoMaterial::GetVideoFrameRate()
-{
-	return m_frameRate;
-}
-
-// Video playback state functions
-bool CVideoMaterial::IsVideoReadyToPlay()
-{
-	return m_videoReady;
-}
-
-bool CVideoMaterial::IsVideoPlaying()
-{
-	return m_videoPlaying;
-}
-
-bool CVideoMaterial::IsNewFrameReady()
-{
-	return false;
-}
-
-bool CVideoMaterial::IsFinishedPlaying()
-{
-	return m_videoEnded;
-}
 
 void CVideoMaterial::DestroySoundBuffer()
 {
@@ -490,43 +455,6 @@ void CVideoMaterial::SetPaused( bool bPauseState )
 	m_videoPlaying = !bPauseState;
 }
 
-bool CVideoMaterial::IsPaused()
-{
-	return !m_videoPlaying;
-}
-
-float CVideoMaterial::GetVideoDuration()
-{
-	if ( m_demuxer )
-		return m_demuxer->getLength();
-	return 0.0f;
-}
-
-int CVideoMaterial::GetFrameCount()
-{
-	return 0;
-}
-
-bool CVideoMaterial::SetFrame( int FrameNum )
-{
-	return false;
-}
-
-int	CVideoMaterial::GetCurrentFrame()
-{
-	return m_currentFrame;
-}
-
-bool CVideoMaterial::SetTime( float flTime )
-{
-	return false;
-}
-
-float CVideoMaterial::GetCurrentVideoTime()
-{
-	return 0.0f;
-}
-
 bool CVideoMaterial::NeedNewFrame( double curtime )
 {
 	if ( m_videoFrames.Count() == 0 )
@@ -535,7 +463,7 @@ bool CVideoMaterial::NeedNewFrame( double curtime )
 	if ( m_videoFrames.Tail().time <= curtime )
 		return true;
 
-	if( m_pAudioBuffer && m_nAudioBufferFilledSize < BUFFER_FILLED_MIN )
+	if( m_pAudioBuffer && m_nAudioBufferFilledSize < m_nAudioBufferSize/2.f)
 		return true;
 
 	return false;
@@ -558,8 +486,54 @@ void CVideoMaterial::RestartVideo()
 	}
 }
 
-void CVideoMaterial::UpdateSoundBuffer()
+void CVideoMaterial::UpdateSoundBuffer(WebMFrame& audioFrame)
 {
+	if (!m_pAudioBuffer || !audioFrame.isValid())
+		return;
+
+	int numOutSamples = 0;
+
+	m_audioDecoder->getPCMS16(audioFrame, m_pcm, numOutSamples);
+	if (numOutSamples == 0)
+		return;
+
+	int nBytesRead = numOutSamples * m_nBytesPerSample;
+#ifdef _WIN32
+	int nPCMOverflowSize = 0;
+	int nPCMOverflowOffset = 0;
+	m_nAudioBufferFilledSize += nBytesRead;
+
+	// can't fit the whole thing at the end so it needs to be split
+	if ((m_nAudioBufferWriteOffset + nBytesRead) >= m_nAudioBufferSize)
+	{
+		// save amount gone over
+		nPCMOverflowSize = (m_nAudioBufferWriteOffset + nBytesRead) - m_nAudioBufferSize;
+		nPCMOverflowOffset = nBytesRead - nPCMOverflowSize;
+		nBytesRead -= nPCMOverflowSize;
+	}
+
+	void* pAudioPtr = NULL;
+	DWORD dwAudioBytes1;
+	m_pAudioBuffer->Lock(m_nAudioBufferWriteOffset, nBytesRead, &pAudioPtr, &dwAudioBytes1, NULL, NULL, 0);
+
+	V_memcpy(pAudioPtr, m_pcm, nBytesRead);
+	m_nAudioBufferWriteOffset += nBytesRead;
+
+	m_pAudioBuffer->Unlock(pAudioPtr, dwAudioBytes1, NULL, NULL);
+
+	if (m_nAudioBufferWriteOffset == m_nAudioBufferSize)
+	{
+		m_nAudioBufferWriteOffset = 0;
+		m_pAudioBuffer->Lock(0, nBytesRead, &pAudioPtr, &dwAudioBytes1, NULL, NULL, 0);
+
+		V_memcpy(pAudioPtr, (char*)(m_pcm)+nPCMOverflowOffset, nPCMOverflowSize);
+		m_nAudioBufferWriteOffset += nPCMOverflowSize;
+
+		m_pAudioBuffer->Unlock(pAudioPtr, dwAudioBytes1, NULL, NULL);
+	}
+#elif _LINUX
+		SDL_AudioStreamPut(m_pSDLAudioStream, m_pcm, nBytesRead);
+#endif
 }
 
 bool CVideoMaterial::Update()
@@ -595,7 +569,7 @@ bool CVideoMaterial::Update()
 	{
 		if( m_pAudioBuffer )
 		{
-			if( m_nAudioBufferFilledSize > BUFFER_FILLED_MIN )
+			if( m_nAudioBufferFilledSize > (m_nAudioBufferSize/2.f))
 				return true;
 		}
 		else
@@ -636,122 +610,63 @@ bool CVideoMaterial::Update()
 	}
 #endif
 	// Read until we've filled the buffer or got enough frames
-	while ( NeedNewFrame( m_curTime ) || bNeedUpdate )
+	while (NeedNewFrame(m_curTime))
 	{
 		WebMFrame video_frame, audio_frame;
 		// did we reach the EOS
-		if ( !m_demuxer->readFrame( &video_frame, &audio_frame) )
+		if (!m_demuxer->readFrame(&video_frame, &audio_frame))
 		{
 			bNeedUpdate = false;
 			break;
 		}
-		else if ( video_frame.isValid() )
+		else if (video_frame.isValid())
 		{
-			m_videoFrames.Insert( video_frame );
+			m_videoFrames.Insert(video_frame);
 		}
 
-		UpdateSoundBuffer();
-
-		bNeedUpdate = false;
-		if (audio_frame.isValid() && m_pAudioBuffer )
-		{
-			int numOutSamples = 0;
-			
-			m_audioDecoder->getPCMS16( audio_frame, m_pcm, numOutSamples );
-			if ( numOutSamples == 0 )
-				continue;
-
-			int nBytesRead = numOutSamples * m_nBytesPerSample;
-#ifdef _WIN32
-			int nPCMOverflowSize = 0;
-			int nPCMOverflowOffset = 0;
-			m_nAudioBufferFilledSize += nBytesRead;
-
-			// can't fit the whole thing at the end so it needs to be split
-			if ( ( m_nAudioBufferWriteOffset + nBytesRead ) >= m_nAudioBufferSize )
-			{
-				// save amount gone over
-				nPCMOverflowSize = ( m_nAudioBufferWriteOffset + nBytesRead ) - m_nAudioBufferSize;
-				nPCMOverflowOffset = nBytesRead - nPCMOverflowSize;
-				nBytesRead -= nPCMOverflowSize;
-				bNeedUpdate = true;
-			}
-
-			void *pAudioPtr = NULL;
-			DWORD dwAudioBytes1;
-			m_pAudioBuffer->Lock(m_nAudioBufferWriteOffset, nBytesRead, &pAudioPtr, &dwAudioBytes1, NULL, NULL, 0);
-
-			V_memcpy( pAudioPtr, m_pcm, nBytesRead );
-			m_nAudioBufferWriteOffset += nBytesRead;
-
-			m_pAudioBuffer->Unlock(pAudioPtr, dwAudioBytes1, NULL, NULL);
-
-			if ( m_nAudioBufferWriteOffset == m_nAudioBufferSize )
-			{
-				m_nAudioBufferWriteOffset = 0;
-				m_pAudioBuffer->Lock(0, nBytesRead, &pAudioPtr, &dwAudioBytes1, NULL, NULL, 0);
-
-				V_memcpy( pAudioPtr, ( char* )( m_pcm )+nPCMOverflowOffset, nPCMOverflowSize );
-				m_nAudioBufferWriteOffset += nPCMOverflowSize;
-
-				m_pAudioBuffer->Unlock(pAudioPtr, dwAudioBytes1, NULL, NULL);
-			}
-#elif _LINUX
-			SDL_AudioStreamPut(m_pSDLAudioStream, m_pcm, nBytesRead);
-#endif
-
-			// if our timer is waayyy ahead set it back to the audio time
-			if ( m_curTime > audio_frame.time )
-			{
-				m_curTime = audio_frame.time;
-			}
-
-			if (audio_frame.buffer)
-				free(audio_frame.buffer);
-		}
+		UpdateSoundBuffer(audio_frame);
+		if (audio_frame.buffer)
+			free(audio_frame.buffer);
 	}
 
 	// roll back for videos with no audio
 	if ( !m_demuxer->isEOS() && !m_audioDecoder->isOpen() )
 	{
-		// if our current time is out, roll it back
-		// Noodles; I feel this will cause issues, but it seems fine right now
-		double frameDur = 1.0 / m_frameRate.GetFPS();
-		if ( m_videoFrames.Count() > 0 && ( m_curTime - m_videoFrames.Head().time ) > ( frameDur * 6.0 ) )
-		{
-			m_curTime = m_videoTime - frameDur;
-		}
+		m_curTime = m_videoTime;
 	}
 
 	while ( m_videoFrames.Count() > 0 && m_curTime >= m_videoTime )
 	{
 		if ( m_videoFrames.Head().isValid() )
 		{
-			// TODO figure out how to skip frames
-			m_videoDecoder->decode( m_videoFrames.Head() );
-
-			VPXDecoder::IMAGE_ERROR err;
-			if ( ( err = m_videoDecoder->getImage( *m_image ) ) != VPXDecoder::NO_FRAME )
-			{
-				if ( err == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR )
-				{
-					m_yTextureRegen->m_decodedImage = m_image;
-					m_crTextureRegen->m_decodedImage = m_image;
-					m_cbTextureRegen->m_decodedImage = m_image;
-
-					m_yTexture->Download();
-					m_crTexture->Download();
-					m_cbTexture->Download();
-				}
-			}
 			m_videoTime = m_videoFrames.Head().time;
 			m_currentFrame++;
 		}
+
+		m_videoDecoder->decode(m_videoFrames.Head());
 
 		// you are responsible for freeing the buffer
 		WebMFrame frame = m_videoFrames.RemoveAtHead();
 		if (frame.buffer)
 			free(frame.buffer);
+	}
+
+	if (m_videoFrames.Count() > 0)
+	{
+		VPXDecoder::IMAGE_ERROR err;
+		if ((err = m_videoDecoder->getImage(*m_image)) != VPXDecoder::NO_FRAME)
+		{
+			if (err == VPXDecoder::IMAGE_ERROR::NO_IMAGE_ERROR)
+			{
+				m_yTextureRegen->m_decodedImage = m_image;
+				m_crTextureRegen->m_decodedImage = m_image;
+				m_cbTextureRegen->m_decodedImage = m_image;
+
+				m_yTexture->Download();
+				m_crTexture->Download();
+				m_cbTexture->Download();
+			}
+		}
 	}
 	
 	return true;
@@ -798,20 +713,6 @@ bool CVideoMaterial::SetVolume( float fVolume )
 #else
 	return false;
 #endif
-}
-
-float CVideoMaterial::GetVolume()
-{
-	return m_volume;
-}
-
-void CVideoMaterial::SetMuted( bool bMuteState )
-{
-}
-
-bool CVideoMaterial::IsMuted()
-{
-	return false;
 }
 
 VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t operation, void *pDevice, void *pData )
@@ -869,4 +770,91 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 void CVideoMaterial::FreezeSoundBuffer()
 {
 	m_pAudioBuffer->Stop();
+}
+
+bool CVideoMaterial::IsPaused()
+{
+	return !m_videoPlaying;
+}
+
+float CVideoMaterial::GetVideoDuration()
+{
+	if (m_demuxer)
+		return m_demuxer->getLength();
+	return 0.0f;
+}
+
+int CVideoMaterial::GetFrameCount()
+{
+	return 0;
+}
+
+bool CVideoMaterial::SetFrame(int FrameNum)
+{
+	return false;
+}
+
+int	CVideoMaterial::GetCurrentFrame()
+{
+	return m_currentFrame;
+}
+
+bool CVideoMaterial::SetTime(float flTime)
+{
+	return false;
+}
+
+float CVideoMaterial::GetCurrentVideoTime()
+{
+	return 0.0f;
+}
+
+float CVideoMaterial::GetVolume()
+{
+	return m_volume;
+}
+
+void CVideoMaterial::SetMuted(bool bMuteState)
+{
+}
+
+bool CVideoMaterial::IsMuted()
+{
+	return false;
+}
+
+const char* CVideoMaterial::GetVideoFileName()
+{
+	return m_videoPath;
+}
+
+VideoResult_t CVideoMaterial::GetLastResult()
+{
+	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
+}
+
+VideoFrameRate_t& CVideoMaterial::GetVideoFrameRate()
+{
+	return m_frameRate;
+}
+
+// Video playback state functions
+bool CVideoMaterial::IsVideoReadyToPlay()
+{
+	return m_videoReady;
+}
+
+bool CVideoMaterial::IsVideoPlaying()
+{
+	return m_videoPlaying;
+}
+
+bool CVideoMaterial::IsNewFrameReady()
+{
+	return false;
+}
+
+bool CVideoMaterial::IsFinishedPlaying()
+{
+	return m_videoEnded;
 }

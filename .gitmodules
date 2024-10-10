@@ -13,3 +13,6 @@
 [submodule "thirdparty/libwebm"]
 	path = thirdparty/libwebm
 	url = https://github.com/webmproject/libwebm.git
+[submodule "thirdparty/soxr"]
+	path = thirdparty/soxr
+	url = https://github.com/chirlu/soxr.git

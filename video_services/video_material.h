@@ -163,7 +163,7 @@ public:
 	virtual void				FreezeSoundBuffer();
 
 #ifdef _WIN32
-	void UpdateSoundBuffer();
+	void UpdateSoundBuffer(WebMFrame& audioFrame);
 #endif
 
 private:
