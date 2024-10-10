@@ -115,7 +115,7 @@ CVideoMaterial::~CVideoMaterial()
 	m_videoStopped = true;
 	//m_videoFrames.Purge();
 	// for each frame in the queue free the buffer
-	while (!m_videoFrames.IsEmpty())
+	while (m_videoFrames.Count() > 0)
 	{
 		WebMFrame frame = m_videoFrames.RemoveAtHead();
 		if ( frame.buffer )
