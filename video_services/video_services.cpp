@@ -79,16 +79,14 @@ void *CVideoServices::QueryInterface( const char *pInterfaceName )
 
 LRESULT CVideoServices::VideoWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	// freeze all sound buffers for certain window messages
-	// TODO - pause the video itself?
+	// freeze all videos when certain video messages are sent
 	if (message == WM_NCLBUTTONDOWN || message == WM_SYSCOMMAND || message == WM_SIZE || message == WM_MOVE )
 	{
 		FOR_EACH_VEC(g_pVideoServices.m_vecVideos, vid)
 		{
-			g_pVideoServices.m_vecVideos[vid]->FreezeSoundBuffer();
+			g_pVideoServices.m_vecVideos[vid]->PauseUntilUpdate();
 		}
 	}
-
 	return CallWindowProc(g_pVideoServices.m_pOldWndProc, hWnd, message, wParam, lParam);
 }
 

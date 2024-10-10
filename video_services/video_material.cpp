@@ -106,6 +106,7 @@ CVideoMaterial::CVideoMaterial()
 	m_nAudioBufferSize = 0;
 	m_nAudioBufferWriteOffset = 0;
 #endif
+	m_awaitingUpdate = false;
 }
 
 CVideoMaterial::~CVideoMaterial()
@@ -558,10 +559,6 @@ void CVideoMaterial::RestartVideo()
 	}
 }
 
-void CVideoMaterial::UpdateSoundBuffer()
-{
-}
-
 bool CVideoMaterial::Update()
 {
 	if ( !StartVideo() )
@@ -571,12 +568,26 @@ bool CVideoMaterial::Update()
 	if ( m_videoStopped )
 		return false;
 
+	if (m_awaitingUpdate)
+	{
+		m_awaitingUpdate = false;
+		SetPaused(false);
+	}
+
 	// we're not stopped, but we're paused
 	if ( !m_videoPlaying )
 		return true;
 
 	// Update time
 	unsigned int curTicks = Plat_MSTime();
+
+	if (m_awaitingUpdate)
+	{
+		m_prevTicks = curTicks;
+		m_awaitingUpdate = false;
+		return true;
+	}
+
 	double timepassed = ( double )( curTicks - m_prevTicks ) / 1000.0;
 	m_curTime += timepassed;
 	m_prevTicks = curTicks;
@@ -649,8 +660,6 @@ bool CVideoMaterial::Update()
 		{
 			m_videoFrames.Insert( video_frame );
 		}
-
-		UpdateSoundBuffer();
 
 		bNeedUpdate = false;
 		if (audio_frame.isValid() && m_pAudioBuffer )
@@ -866,7 +875,8 @@ VideoResult_t CVideoMaterial::SoundDeviceCommand( VideoSoundDeviceOperation_t op
 	return VideoResult_t::SYSTEM_NOT_AVAILABLE;
 }
 
-void CVideoMaterial::FreezeSoundBuffer()
+void CVideoMaterial::PauseUntilUpdate()
 {
-	m_pAudioBuffer->Stop();
+	m_awaitingUpdate = true;
+	SetPaused(true);
 }

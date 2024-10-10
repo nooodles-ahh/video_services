@@ -159,12 +159,8 @@ public:
 	virtual void				GetVideoTexCoordRange( float *pMaxU, float *pMaxV );
 	virtual void				GetVideoImageSize( int *pWidth, int *pHeight );
 
-	// for stopping the sound buffer when the main thread gets interrupted
-	virtual void				FreezeSoundBuffer();
-
-#ifdef _WIN32
-	void UpdateSoundBuffer();
-#endif
+	// pauses the video until the next time Update() is called
+	virtual void				PauseUntilUpdate();
 
 private:
 	bool NeedNewFrame( double timepassed );
@@ -208,6 +204,7 @@ private:
 	float m_volume;
 	double m_curTime;
 	double m_videoTime;
+	bool m_awaitingUpdate;
 
 	unsigned int m_prevTicks;
 	unsigned int m_currentFrame;
