@@ -44,13 +44,22 @@ To encode a compatiable webm I would recommend using [WebmConverter](https://arg
 While slower to encode you will probably want to be using VP9 and Opus for the best results, you will also need to ensure that the pixel format is YUV420 as other formats are not currently supported. WebmConverter does this by default, but you need to make sure this is done if you're using another encoding program such as FFmpeg or HandBrake.
 
 # Building
-- Add `$Include "video_services\vpc_scripts\projects.vgc"` to `vpc_scripts\default.vgc` in your mod.
-- Include `video_services` in your project group
+- Either clone or copy the repository into the root src folder 
+- Add the following block to `vpc_scripts\projects.vgc`
+	```
+	$Project "video_services"
+	{
+		"video_services\video_services\video_services.vpc"
+	}
+	```
+- Add `video_services` a group in `vpc_scripts\groups.vgc`
 - Regenerate the project and build
-- Copy the vpx library and the resulting video_services library into the relevant bin folder
+- Copy vpx.dll from `bin\` and the resulting video_services library into the game bin folder
 
 # TODO
 - Support for other pixel formats
+- Create patch for overriding when loading a game shader, allowing startup webms on mods
+
 
 # Issues I won't fix/Features I won't implement
 - Video recording
@@ -71,7 +80,7 @@ if ( g_pVideo )
 
 // get video_services.dll from our game's bin folder
 char video_service_path[MAX_PATH];
-Q_snprintf( video_service_path, sizeof( video_service_path ), "%s\\bin\\video_services.dll", engine->GetGameDirectory() );
+V_snprintf( video_service_path, sizeof( video_service_path ), "%s\\bin\\video_services.dll", engine->GetGameDirectory() );
 
 CSysModule *video_services_module = Sys_LoadModule( video_service_path );
 if ( video_services_module != nullptr )

@@ -7,6 +7,7 @@
 $Macro SRCDIR		"..\.."
 $Macro OUTBINDIR	"$SRCDIR\..\game\bin"
 
+//$Macro LIBVIDEO	"$LIBPUBLIC"
 $Macro LIBVIDEO	"..\lib$PLATSUBDIR"
 
 $Include "$SRCDIR\vpc_scripts\source_dll_base.vpc"
@@ -18,15 +19,31 @@ $Configuration
 	{
 		$AdditionalIncludeDirectories		"$BASE;$SRCDIR\video_services\includes\;$SRCDIR\video_services\includes\libwebm;$SRCDIR\video_services\includes\dx9sdk\"
 		$AdditionalIncludeDirectories		"$BASE;$SRCDIR\video_services\includes\SDL2\" [$SDL]
-		$PreprocessorDefinitions			"$BASE;MPI;PROTECTED_THINGS_DISABLE"
+		$PreprocessorDefinitions			"$BASE;PROTECTED_THINGS_DISABLE"
 		$TreatWarningsAsErrors				"No (/WX-)"
-		$EnableC++Exceptions				"Yes With SEH Exceptions (/EHa)" [$WIN32]
 	}
 
 	$Linker
 	{
 		$AdditionalLibraryDirectories		"$BASE;$LIBVIDEO"
 	}
+}
+
+$Configuration "Debug"
+{
+    $Linker
+    {
+        $AdditionalDependencies					"$BASE $LIBVIDEO\libwebmd.lib" [$WIN32]
+		$AdditionalOptions						"$BASE /ignore:4099"
+    }    
+}
+
+$Configuration "Release"
+{
+    $Linker
+    {
+		$AdditionalDependencies					"$BASE $LIBVIDEO\libwebm.lib" [$WIN32]
+    }    
 }
 
 $Project "Video Services"
@@ -66,7 +83,6 @@ $Project "Video Services"
 		$Lib tier2
 		$Lib tier3
 		$ImpLib $LIBVIDEO\SDL2 [$SDL]
-		$Lib $LIBVIDEO\libwebm
 		$ImpLib $LIBVIDEO\vpx
 		
 		$Lib $LIBVIDEO\vorbis [$WIN32]
@@ -75,6 +91,7 @@ $Project "Video Services"
 		$Lib $LIBVIDEO\dsound [$WIN32]
 		$Lib $LIBVIDEO\dxguid [$WIN32]
 		
+		$Lib $LIBVIDEO\libwebm [$LINUX]
 		$Lib $LIBVIDEO\libvorbis [$LINUX]
 		$Lib $LIBVIDEO\libopus [$LINUX]
 		$Lib $LIBVIDEO\libogg [$LINUX]

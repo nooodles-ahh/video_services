@@ -17,12 +17,6 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-// about a second
-#define BUFFER_SIZE 196608
-// at minimim accomdate about an update every 125ms
-#define BUFFER_FILLED_MIN 4096 * 16
-#define FREEZE_TIME 0.125
-
 //=============================================================================
 // 
 // Video texture regenerator
@@ -257,7 +251,7 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 
 	DSBUFFERDESC dsbd{};
 	dsbd.dwSize = sizeof( DSBUFFERDESC );
-	dsbd.dwBufferBytes = BUFFER_SIZE;
+	dsbd.dwBufferBytes = waveFormat.nAvgBytesPerSec * 2.f;
 	dsbd.lpwfxFormat = &waveFormat;
 
 	// if we have the losefocus cvar determine if we want to remove the global focus flag
@@ -266,7 +260,7 @@ bool CVideoMaterial::CreateSoundBuffer( void* pSoundDevice )
 	if ( snd_mute_losefocus.GetBool() )
 		dsbd.dwFlags = dsbd.dwFlags & ~( DSBCAPS_GLOBALFOCUS );
 
-	m_nAudioBufferSize = BUFFER_SIZE;
+	m_nAudioBufferSize = dsbd.dwBufferBytes;
 	m_nBytesPerSample = waveFormat.nBlockAlign;
 
 	IDirectSoundBuffer* tempBuffer = nullptr;
@@ -536,7 +530,7 @@ bool CVideoMaterial::NeedNewFrame( double curtime )
 	if ( m_videoFrames.Tail().time <= curtime )
 		return true;
 
-	if( m_pAudioBuffer && m_nAudioBufferFilledSize < BUFFER_FILLED_MIN )
+	if (m_pAudioBuffer && m_nAudioBufferFilledSize < m_nAudioBufferSize / 2.f)
 		return true;
 
 	return false;
@@ -602,11 +596,11 @@ bool CVideoMaterial::Update()
 	}
 #endif
 
-	if ( m_curTime < m_videoTime )
+	if (m_curTime < m_videoTime)
 	{
-		if( m_pAudioBuffer )
+		if (m_pAudioBuffer)
 		{
-			if( m_nAudioBufferFilledSize > BUFFER_FILLED_MIN )
+			if (m_nAudioBufferFilledSize > (m_nAudioBufferSize / 2.f))
 				return true;
 		}
 		else
